@@ -1,5 +1,5 @@
 from . import Widget
-from viewer.core import Texture2D
+from ..types import Texture2D
 from imgui_bundle import imgui, imgui_ctx, ImVec2
 
 class PixelInspector(Widget):

@@ -1,5 +1,11 @@
 import glfw
-from websockets.sync.server import serve
+import json
+import time
+import threading
+from collections import defaultdict
+from websockets.exceptions import ConnectionClosed, ConnectionClosedOK, ConnectionClosedError
+from websockets.sync.server import serve, ServerConnection
+from websockets.sync.client import connect, ClientConnection
 from .types import *
 from viewer.widgets import Widget
 from abc import ABC, abstractmethod
@@ -15,8 +21,16 @@ class Viewer(ABC):
     The '(send|recv)_(server|client)' should be used for message passing between
     the server and client for remote viewer support.
     """
-    window_title = "Viewer"
-    should_exit = False
+    def __init__(self):
+        self.window_title = "Viewer"
+        self.should_exit = False
+        self.num_connections = 0
+
+        # Only used in client mode
+        self.websocket = None
+
+        # Mapping of widget_id to widget
+        self.widget_id_to_widget = {}
 
     def setup(self):
         """ Go over all of the widgets and initialize them """
@@ -24,6 +38,7 @@ class Viewer(ABC):
         for _, widget in vars(self).items():
             if isinstance(widget, Widget):
                 widget.setup()
+                self.widget_id_to_widget[widget.widget_id] = widget
 
     def destroy(self):
         """ Go over all of the widgets and free any manually allocated objects """
@@ -31,27 +46,61 @@ class Viewer(ABC):
             if isinstance(widget, Widget):
                 widget.destroy()
     
-    def _show_gui(self):
+    def _main(self, websocket=None):
         """
         TODO: Update
         Internal method which handles inputs, resize and calls
         backend computation and then creates the UI.
         """
-        if self.mode is CLIENT:
-            self._client_send()
+        if self.mode is CLIENT and self.websocket is not None:
+            try:
+                self._client_send(self.websocket)
+            except ConnectionClosed:
+                print("INFO: Server disconnected")
+                self.websocket.close()
+                self.websocket = None
+
         if self.mode is SERVER:
-            self._server_recv()
+            self._server_recv(websocket)
 
-        self.step()
+        if self.mode in LOCAL_SERVER:
+            self.step()
 
         if self.mode is SERVER:
-            self._server_send()
-        if self.mode is CLIENT:
-            self._client_recv()
-        
-        self.show_gui()
+            self._server_send(websocket)
 
-    def _server_send(self):
+        if self.mode is CLIENT and self.websocket is not None:
+            try:
+                self._client_recv(self.websocket)
+            except ConnectionClosed:
+                print("INFO: Server disconnected")
+                self.websocket.close()
+                self.websocket = None
+
+        if self.mode in LOCAL_CLIENT:
+            self.show_gui()
+    
+    def _server_loop(self, websocket: ServerConnection):
+        """ Internal method which runs the server loop. """
+        # We only allow one client to connect at a time (for now).
+        if self.num_connections > 0:
+            print("INFO: Client already connected. Only one client is allowed.")
+            websocket.close()
+            return
+        self.num_connections += 1
+
+        # Main Loop
+        try:
+            while True:
+                self._main(websocket)
+        except ConnectionClosedOK:
+            print("INFO: Client disconnected.")
+            self.num_connections -= 1
+        except ConnectionClosedError as e:
+            print(f"ERROR: Connection closed with error: {e}")
+            self.num_connections -= 1
+
+    def _server_send(self, websocket: ServerConnection):
         """
         Internal method which goes over all of the registered widgets to compile 
         and send the server state to the client.
@@ -76,20 +125,64 @@ class Viewer(ABC):
             all_binaries.append(binary)
             binary_to_widget.append("viewer")
         
-        # Send the metadata
+        # Send metadata
+        websocket.send(json.dumps(metadata), text=True)
 
         # Send binary mapping
+        websocket.send(json.dumps(binary_to_widget), text=True)
 
         # Send binaries
+        for binary in all_binaries:
+            websocket.send(binary, text=False)
 
-    def _server_recv(self):
+    def _server_recv(self, websocket: ServerConnection):
         """
         Internal method which receives state from the client and updates all of
         the widgets.
         """
-        pass
+        # Receive metadata
+        metadata = json.loads(websocket.recv())
 
-    def _client_send(self):
+        # Receive binary mapping
+        binary_to_widget = json.loads(websocket.recv())
+
+        # Receive binaries
+        all_binaries = []
+        for _ in binary_to_widget:
+            binary = websocket.recv()
+            all_binaries.append(binary)
+
+        # Assemble the data
+        all_data = {}
+        for widget_id, metadata in metadata.items():
+            all_data[int(widget_id)]["metadata"] = metadata
+        for widget_id, binary in zip(binary_to_widget, all_binaries):
+            all_data[widget_id]["binary"] = binary
+
+        # Update the widgets
+        for widget_id, data in all_data.items():
+            widget = self.widget_id_to_widget[int(widget_id)]
+            widget.server_recv(data.get("binary", None), data.get("metadata", None))
+    
+    def _client_loop(self, ip: str, port: int):
+        """
+        Internal method which runs the client loop. This loop only deals with
+        connecting to the server and handling reconnections. The '_main' method
+        is run by the 'immapp.run' function.
+        """
+        while True:
+            # Try to connect to the server
+            if self.websocket is None:
+                try:
+                    self.websocket = connect(f"ws://{ip}:{port}", max_size=None)
+                    print("INFO: Connected to server.")
+                except Exception as e:
+                    print(f"INFO: Failed to connect to server with error: {e}."
+                        " Retrying in 5 seconds.")
+                    self.websocket = None
+            time.sleep(5)
+
+    def _client_send(self, websocket: ClientConnection):
         """
         Internal method which goes over all of the registered widgets to compile
         and send the client state to the server.
@@ -114,22 +207,55 @@ class Viewer(ABC):
             all_binaries.append(binary)
             binary_to_widget.append("viewer")
         
-        # Send the metadata
+        # Send metadata
+        websocket.send(json.dumps(metadata), text=True)
 
         # Send binary mapping
+        websocket.send(json.dumps(binary_to_widget), text=True)
 
         # Send binaries
+        for binary in all_binaries:
+            websocket.send(binary, text=False)
 
-    def _server_send(self):
+    def _client_recv(self, websocket: ClientConnection):
         """
         Internal method which receives state from the server and updates all of
         the widgets.
         """
-        pass
+        # Receive metadata
+        metadata = json.loads(websocket.recv())
+
+        # Receive binary mapping
+        binary_to_widget = json.loads(websocket.recv())
+
+        # Receive binaries
+        all_binaries = []
+        for _ in binary_to_widget:
+            binary = websocket.recv()
+            all_binaries.append(binary)
+
+        # Assemble the data
+        all_data = defaultdict(dict)
+        for widget_id, metadata in metadata.items():
+            all_data[int(widget_id)]["metadata"] = metadata
+        for widget_id, binary in zip(binary_to_widget, all_binaries):
+            all_data[widget_id]["binary"] = binary
+
+        # Update the widgets
+        for widget_id, data in all_data.items():
+            widget = self.widget_id_to_widget[int(widget_id)]
+            widget.client_recv(data.get("binary", None), data.get("metadata", None))
 
     def run(self, mode: ViewerMode, ip: str = "localhost", port: int = 6009):
         self.mode = mode
         self.create_widgets()
+
+        # Run the client connection in a different thread, the main thread runs the GUI.
+        if mode is CLIENT:
+            connect_thread = threading.Thread(target=self._client_loop, args=(ip, port))
+            # Make the thread a daemon so that it exits when the main thread exits.
+            connect_thread.daemon = True
+            connect_thread.start()
         if mode in LOCAL_CLIENT:
             self._runner_params = hello_imgui.RunnerParams()
             self._runner_params.fps_idling.enable_idling = False
@@ -139,7 +265,7 @@ class Viewer(ABC):
             self._runner_params.imgui_window_params.show_menu_bar = True
             self._runner_params.callbacks.post_init = self.setup
             self._runner_params.callbacks.before_exit = self.destroy
-            self._runner_params.callbacks.show_gui = self._show_gui
+            self._runner_params.callbacks.show_gui = self._main
             self._runner_params.callbacks.show_status = self.show_status
             self._runner_params.callbacks.post_init_add_platform_backend_callbacks = lambda: glfw.swap_interval(0)
             self._runner_params.platform_backend_type = hello_imgui.PlatformBackendType.glfw
@@ -149,13 +275,19 @@ class Viewer(ABC):
             # but that would mean the 'want_capture_mouse' variable will always be set.
             self._runner_params.imgui_window_params.default_imgui_window_type = hello_imgui.DefaultImGuiWindowType.provide_full_screen_dock_space
             immapp.run(self._runner_params, self._addon_params)
-
-            if mode is CLIENT:
-                pass
-                # Connect to the server
-        else:
+        if mode is SERVER:
             # Start the server
-            pass
+            with serve(self._server_loop, ip, port, max_size=None) as server:
+                server_thread = threading.Thread(target=server.serve_forever)
+                server_thread.start()
+                while True:
+                    try:
+                        time.sleep(1)
+                    except KeyboardInterrupt:
+                        print("INFO: Shutting down server.")
+                        server.shutdown()
+                        server_thread.join()
+                        break
 
     def step(self):
         """ Your application logic goes here. """

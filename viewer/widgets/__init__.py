@@ -1,12 +1,12 @@
 import torch
-from types import ViewerMode
+from viewer.types import ViewerMode
 from abc import ABC, abstractmethod
 
 class Widget(ABC):
     id = 0
 
     def __init__(self, mode: ViewerMode):
-        self.mode
+        self.mode = mode
         self.widget_id = self.id
         self.id += 1
 

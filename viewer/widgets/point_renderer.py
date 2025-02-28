@@ -3,7 +3,7 @@ import numpy as np
 from . import Widget
 from OpenGL.GL import *
 from imgui_bundle import imgui
-from viewer.core import Texture2D
+from ..types import Texture2D
 from viewer.cameras import Camera
 from OpenGL.GL.shaders import compileShader, compileProgram
 

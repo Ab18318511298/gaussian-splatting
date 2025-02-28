@@ -1,7 +1,7 @@
 import numpy as np
 from . import Widget
 from OpenGL.GL import *
-from viewer.core import Texture2D
+from ..types import Texture2D
 from OpenGL.GL.shaders import compileShader, compileProgram
 from imgui_bundle import imgui, imgui_ctx, ImVec2
 

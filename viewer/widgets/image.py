@@ -29,9 +29,9 @@ class Image(Widget):
     the '_upload' method to upload their image to the OpenGL texture.
     """
     def __init__(self, mode: ViewerMode):
-        self.mode = mode
         self.texture = Texture2D()
         self.img = None
+        super().__init__(mode)
 
     def setup(self):
         """ Create OpenGL texture to be displayed. """
@@ -66,6 +66,9 @@ class Image(Widget):
         """
 
     def show_gui(self, draw_list: imgui.ImDrawList=None, res_x=0, res_y=0):
+        if self.img is None:
+            return
+
         glBindTexture(GL_TEXTURE_2D, self.texture.id)
         self._upload()
 
@@ -94,7 +97,10 @@ class NumpyImage(Image):
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, img.shape[1], img.shape[0], GL_RGB, GL_UNSIGNED_BYTE, img)
     
     def server_send(self):
-        return memoryview(self.img), {"shape": tuple(self.img.shape)}
+        img = self.img
+        if img.dtype != np.uint8:
+            img = (np.clip(img, 0, 1) * 255).astype(np.uint8)
+        return memoryview(img), {"shape": tuple(img.shape)}
     
     def client_recv(self, binary, text):
         self.img = np.frombuffer(binary, dtype=np.uint8).reshape(text["shape"])
@@ -150,7 +156,7 @@ try:
             return memoryview(self.img.cpu().numpy()), {"shape": tuple(self.img.shape)}
 
         def client_recv(self, binary, dict):
-            raise NotImplementedError("TorchImage shouldn't be used in client mode.")
+            raise NotImplementedError("'TorchImage' shouldn't be used in client mode.")
             
 except ImportError:
     print("WARNING: 'cuda-python' not found. Stubbing 'TorchImage' with 'NumpyImage'.")
