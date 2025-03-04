@@ -21,7 +21,7 @@ class Viewer(ABC):
     The '(send|recv)_(server|client)' should be used for message passing between
     the server and client for remote viewer support.
     """
-    def __init__(self):
+    def __init__(self, mode: ViewerMode):
         self.window_title = "Viewer"
         self.should_exit = False
         self.num_connections = 0
@@ -31,6 +31,12 @@ class Viewer(ABC):
 
         # Mapping of widget_id to widget
         self.widget_id_to_widget = {}
+
+        self.mode = mode
+
+        # Import server specific modules
+        if self.mode in LOCAL_SERVER:
+            self.import_server_modules()
 
     def setup(self):
         """ Go over all of the widgets and initialize them """
@@ -246,17 +252,16 @@ class Viewer(ABC):
             widget = self.widget_id_to_widget[int(widget_id)]
             widget.client_recv(data.get("binary", None), data.get("metadata", None))
 
-    def run(self, mode: ViewerMode, ip: str = "localhost", port: int = 6009):
-        self.mode = mode
+    def run(self, ip: str = "localhost", port: int = 6009):
         self.create_widgets()
 
         # Run the client connection in a different thread, the main thread runs the GUI.
-        if mode is CLIENT:
+        if self.mode is CLIENT:
             connect_thread = threading.Thread(target=self._client_loop, args=(ip, port))
             # Make the thread a daemon so that it exits when the main thread exits.
             connect_thread.daemon = True
             connect_thread.start()
-        if mode in LOCAL_CLIENT:
+        if self.mode in LOCAL_CLIENT:
             self._runner_params = hello_imgui.RunnerParams()
             self._runner_params.fps_idling.enable_idling = False
             self._runner_params.app_window_params.window_geometry.window_size_state = hello_imgui.WindowSizeState.maximized
@@ -267,6 +272,7 @@ class Viewer(ABC):
             self._runner_params.callbacks.before_exit = self.destroy
             self._runner_params.callbacks.show_gui = self._main
             self._runner_params.callbacks.show_status = self.show_status
+            # Disable VSync
             self._runner_params.callbacks.post_init_add_platform_backend_callbacks = lambda: glfw.swap_interval(0)
             self._runner_params.platform_backend_type = hello_imgui.PlatformBackendType.glfw
             self._addon_params = immapp.AddOnsParams(with_implot=True)
@@ -275,7 +281,7 @@ class Viewer(ABC):
             # but that would mean the 'want_capture_mouse' variable will always be set.
             self._runner_params.imgui_window_params.default_imgui_window_type = hello_imgui.DefaultImGuiWindowType.provide_full_screen_dock_space
             immapp.run(self._runner_params, self._addon_params)
-        if mode is SERVER:
+        if self.mode is SERVER:
             # Start the server
             with serve(self._server_loop, ip, port, max_size=None) as server:
                 server_thread = threading.Thread(target=server.serve_forever)
@@ -314,6 +320,15 @@ class Viewer(ABC):
 
     def show_status(self):
         """ Use this function to render status bar at the bottom. """
+
+    def import_server_modules(self):
+        """
+        Import server specific modules here. We want the viewer to run without 
+        any additional dependancies so we only import the server modules when
+        on the server. The modules imported here can only be used in `step` and
+        `server*` methods. Don't forget to declare the variables as `global` to 
+        ensure that they are globally accesible.
+        """
 
     @abstractmethod
     def show_gui(self) -> bool:
