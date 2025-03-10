@@ -1,11 +1,15 @@
 import numpy as np
+from .. import Widget
+from ...types import ViewerMode, Texture2D
 
 # Coordinate system is same as OpenCV
 # Forward -> +Z
 # Up -> -Y
 # Right -> +X
-class Camera:
-    def __init__(self, to_world: np.ndarray=None):
+class Camera(Widget):
+    def __init__(self, mode: ViewerMode, fov_y: float=30.0, to_world: np.ndarray=None):
+        super().__init__(mode)
+
         # Extrinsics
         self.origin = np.asarray([0.0, 0.0, 0.0])
         self.forward = np.asarray([0.0, 0.0, 1.0])
@@ -16,13 +20,15 @@ class Camera:
         self.delta_time = 0
 
         if to_world is not None:
-            self.origin = (to_world @ np.array([0, 0, 0, 1]))[:3]
-            self.forward = (to_world @ np.array([0, 0, 1, 0]))[:3]
-            self.forward = self.forward / np.linalg.norm(self.forward)
-            self.up = (to_world @ np.array([0, 1, 0, 0]))[:3]
-            self.up = self.up / np.linalg.norm(self.up)
-            self.right = (to_world @ np.array([-1, 0, 0, 0]))[:3]
-            self.right = self.right / np.linalg.norm(self.right)
+            self.update_pose(to_world)
+
+        self.fov_y = fov_y
+
+    def server_recv(self, _, text):
+        self.update_pose(np.array(text["to_world"]))
+
+    def client_send(self):
+        return None, self.to_json()
 
     @classmethod
     def from_json(cls, json):
@@ -30,9 +36,7 @@ class Camera:
         return cls(to_world)
 
     def to_json(self):
-        return {
-            "to_world": self.to_world.tolist()
-        }
+        return { "to_world": self.to_world.tolist() }
 
     def process_input(self):
         """ Child class should override this to navigate. """
@@ -53,7 +57,19 @@ class Camera:
 
     def show_gui(self) -> bool:
         return False
+    
+    def draw_camera(self, camera: 'Camera', texture: Texture2D, thickness: float=1.0, color: tuple=(1.0, 1.0, 1.0)):
+        """
+        Draw the camera onto texture as observed from another camera. The camera
+        is drawn on a OpenGL texture with a fragment shader.
 
+        Args:
+            camera: The camera from which the current camera is observed.
+            texture: The texture on which the camera is to be drawn.
+            thickness: The thickness of the lines in pixels.
+            color: The color (normalized) of the camera lines.
+        """
+        raise NotImplementedError()
 
     def apply_rotation(self, angle_forward: float, angle_right: float, angle_up: float):
         """
@@ -93,7 +109,10 @@ class Camera:
     def update_pose(self, mat: np.ndarray):
         self.origin = mat[:3, 3]
         self.forward = mat[:3, 2]
+        self.forward = self.forward / np.linalg.norm(self.forward)
         self.up = -mat[:3, 1]
+        self.up = self.forward / np.linalg.norm(self.up)
         self.right = mat[:3, 0]
+        self.right = self.forward / np.linalg.norm(self.right)
 
 from .fps import FPSCamera

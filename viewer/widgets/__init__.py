@@ -63,13 +63,3 @@ class Widget(ABC):
     @abstractmethod
     def show_gui(self):
         pass
-
-from .compare import Compare
-from .radio import RadioPicker
-from .camera_select import CameraSelect
-from .monitor import PerformanceMonitor
-from .sphere_viewer import SphereViewer
-from .image import NumpyImage, TorchImage
-from .point_renderer import PointRenderer
-from .pixel_inspector import PixelInspector
-from .display_transform import DisplayTransform
