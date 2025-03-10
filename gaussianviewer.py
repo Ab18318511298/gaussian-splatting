@@ -5,7 +5,7 @@ from argparse import ArgumentParser
 from imgui_bundle import imgui, imgui_ctx
 from viewer import Viewer
 from viewer.types import ViewerMode
-from viewer.widgets.image import NumpyImage
+from viewer.widgets.image import NumpyImage, TorchImage
 from viewer.widgets.cameras.fps import FPSCamera
 from viewer.widgets.viewport_3d import Viewport3D
 
@@ -52,7 +52,7 @@ class GaussianViewer(Viewer):
 
     def create_widgets(self):
         camera = FPSCamera(self.mode, 1280, 720, 30, 0.001, 100)
-        img = NumpyImage(self.mode)
+        img = TorchImage(self.mode)
         self.point_view = Viewport3D(self.mode, "Point View", img, camera)
         self.scaling_modifier = 1.0
 
@@ -65,7 +65,7 @@ class GaussianViewer(Viewer):
         camera = MiniCam(camera.res_x, camera.res_y, camera.fov_y, camera.fov_x, camera.z_near, camera.z_far, world_to_view, full_proj_transform)
         with self.gaussian_lock:
             net_image = render(camera, self.gaussians, self.pipe, background, scaling_modifier=self.scaling_modifier, use_trained_exp=self.dataset.train_test_exp, separate_sh=self.separate_sh)["render"]
-        net_image = (torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy()
+        net_image = (torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous()#.cpu().numpy()
         self.point_view.step(net_image)
     
     def show_gui(self):
