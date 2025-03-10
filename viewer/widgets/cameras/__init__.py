@@ -7,7 +7,12 @@ from ...types import ViewerMode, Texture2D
 # Up -> -Y
 # Right -> +X
 class Camera(Widget):
-    def __init__(self, mode: ViewerMode, fov_y: float=30.0, to_world: np.ndarray=None):
+    def __init__(
+            self, mode: ViewerMode,
+            res_x: int=1280, res_y: int=720, fov_y: float=30.0,
+            z_near: float=0.001, z_far: float=100.0,
+            to_world: np.ndarray=None
+        ):
         super().__init__(mode)
 
         # Extrinsics
@@ -22,21 +27,42 @@ class Camera(Widget):
         if to_world is not None:
             self.update_pose(to_world)
 
-        self.fov_y = fov_y
+        # Intrinsics
+        self.res_x = res_x
+        self.res_y = res_y
+        self.fov_y = np.deg2rad(fov_y)
+        self.fov_x = 2 * np.arctan(np.tan(self.fov_y / 2) * (res_x / res_y))
+        self.z_near = z_near
+        self.z_far = z_far
 
     def server_recv(self, _, text):
+        self.res_x = text["res_x"]
+        self.res_y = text["res_y"]
+        self.fov_x = text["fov_x"]
+        self.fov_y = text["fov_y"]
+        self.z_near = text["z_near"]
+        self.z_far = text["z_far"]
         self.update_pose(np.array(text["to_world"]))
 
     def client_send(self):
         return None, self.to_json()
 
     @classmethod
-    def from_json(cls, json):
+    def from_json(cls, mode: ViewerMode, json):
         to_world = np.array(json["to_world"])
-        return cls(to_world)
+        del json["to_world"]
+        return cls(mode, to_world=to_world, **json)
 
     def to_json(self):
-        return { "to_world": self.to_world.tolist() }
+        return {
+            "res_x": self.res_x,
+            "res_y": self.res_y,
+            "fov_x": self.fov_x,
+            "fov_y": self.fov_y,
+            "z_near": self.z_near,
+            "z_far": self.z_far,
+            "to_world": self.to_world.tolist()
+        }
 
     def process_input(self):
         """ Child class should override this to navigate. """
@@ -44,7 +70,7 @@ class Camera(Widget):
 
     @property
     def to_world(self) -> np.ndarray:
-        mat = np.identity(4)
+        mat = np.identity(4, dtype=np.float32)
         mat[:3, 3] = self.origin
         mat[:3, 0] = self.right
         mat[:3, 1] = -self.up
@@ -54,6 +80,34 @@ class Camera(Widget):
     @property
     def to_camera(self) -> np.ndarray:
         return np.linalg.inv(self.to_world)
+    
+    @property
+    def projection(self) -> np.ndarray:
+        tan_half_fov_y = np.tan(self.fov_y / 2)
+        tan_half_fov_x = np.tan(self.fov_x / 2)
+
+        top = tan_half_fov_y * self.z_near
+        bottom = -top
+        right = tan_half_fov_x * self.z_near
+        left = -right
+
+        P = np.zeros((4, 4), dtype=np.float32)
+
+        z_sign = 1.0
+
+        P[0, 0] = 2.0 * self.z_near / (right - left)
+        P[1, 1] = 2.0 * self.z_near / (top - bottom)
+        P[0, 2] = (right + left) / (right - left)
+        P[1, 2] = (top + bottom) / (top - bottom)
+        P[3, 2] = z_sign
+        P[2, 2] = z_sign * self.z_far / (self.z_far - self.z_near)
+        P[2, 3] = -(self.z_far * self.z_near) / (self.z_far - self.z_near)
+
+        return P
+    
+    @property
+    def full_projection(self) -> np.ndarray:
+        return self.projection @ self.to_camera
 
     def show_gui(self) -> bool:
         return False
@@ -114,5 +168,3 @@ class Camera(Widget):
         self.up = self.forward / np.linalg.norm(self.up)
         self.right = mat[:3, 0]
         self.right = self.forward / np.linalg.norm(self.right)
-
-from .fps import FPSCamera

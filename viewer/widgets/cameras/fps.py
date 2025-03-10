@@ -5,8 +5,13 @@ from imgui_bundle import imgui
 
 # TODO: Coalesce all camera types into a single class
 class FPSCamera(Camera):
-    def __init__(self, mode: ViewerMode, fov_y: float=30, to_world: np.ndarray=None):
-        super().__init__(mode, fov_y, to_world)
+    def __init__(
+            self, mode: ViewerMode,
+            res_x: int=1280, res_y: int=720, fov_y: float=30.0,
+            z_near: float=0.001, z_far: float=100.0,
+            to_world: np.ndarray=None
+    ):
+        super().__init__(mode, res_x, res_y, fov_y, z_near, z_far, to_world)
         self.speed = 1
         self.mouse_speed = 2
         self.radians_per_pixel = np.pi / 150
