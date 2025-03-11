@@ -1,5 +1,6 @@
 import numpy as np
 from .. import Widget
+from imgui_bundle import imgui
 from ...types import ViewerMode, Texture2D
 
 # Coordinate system is same as OpenCV
@@ -64,7 +65,11 @@ class Camera(Widget):
             "to_world": self.to_world.tolist()
         }
 
-    def process_input(self):
+    def process_mouse_input(self):
+        """ Child class should override this to navigate. """
+        pass
+    
+    def process_keyboard_input(self):
         """ Child class should override this to navigate. """
         pass
 
@@ -110,6 +115,9 @@ class Camera(Widget):
         return self.projection @ self.to_camera
 
     def show_gui(self) -> bool:
+        curr_time = imgui.get_time()
+        self.delta_time = curr_time - self.last_frame_time
+        self.last_frame_time = curr_time
         return False
     
     def draw_camera(self, camera: 'Camera', texture: Texture2D, thickness: float=1.0, color: tuple=(1.0, 1.0, 1.0)):

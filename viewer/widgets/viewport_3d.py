@@ -28,5 +28,8 @@ class Viewport3D(Widget):
             self.camera.show_gui()
         self.img.show_gui()
         
-        if imgui.is_window_focused() or imgui.is_item_hovered():
-            self.camera.process_input()
+        if imgui.is_item_hovered():
+            self.camera.process_mouse_input()
+        
+        if imgui.is_item_focused() or imgui.is_item_hovered():
+            self.camera.process_keyboard_input()

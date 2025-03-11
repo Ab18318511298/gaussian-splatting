@@ -16,15 +16,21 @@ class FPSCamera(Camera):
         self.mouse_speed = 2
         self.radians_per_pixel = np.pi / 150
         self.invert_mouse = False
+    
+    def process_mouse_input(self) -> bool:
+        if imgui.is_mouse_dragging(0):
+            delta = imgui.get_mouse_drag_delta()
+            delta.y *= -1 if self.invert_mouse else 1
+            delta.x *= -1 if self.invert_mouse else 1
+            angle_right = -delta.y * self.radians_per_pixel * self.delta_time * self.mouse_speed
+            angle_up = -delta.x * self.radians_per_pixel * self.delta_time * self.mouse_speed
+            self.apply_rotation(0, angle_right, angle_up)
+            imgui.reset_mouse_drag_delta()
+            return True
 
-    def process_input(self) -> bool:
-        curr_time = imgui.get_time()
-        self.delta_time = curr_time - self.last_frame_time
-        self.last_frame_time = curr_time
-
-        return self._move() or self._rotate()
-
-    def _move(self) -> bool:
+        return False
+    
+    def process_keyboard_input(self):
         update = False
 
         if imgui.is_key_down(imgui.Key.w):
@@ -67,19 +73,6 @@ class FPSCamera(Camera):
             update = True
 
         return update
-    
-    def _rotate(self) -> bool:
-        if imgui.is_mouse_dragging(0):
-            delta = imgui.get_mouse_drag_delta()
-            delta.y *= -1 if self.invert_mouse else 1
-            delta.x *= -1 if self.invert_mouse else 1
-            angle_right = -delta.y * self.radians_per_pixel * self.delta_time * self.mouse_speed
-            angle_up = -delta.x * self.radians_per_pixel * self.delta_time * self.mouse_speed
-            self.apply_rotation(0, angle_right, angle_up)
-            imgui.reset_mouse_drag_delta()
-            return True
-
-        return False
     
     def show_gui(self):
         # TODO: Properly do this (respect focus etc)
