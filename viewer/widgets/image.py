@@ -7,9 +7,9 @@ from abc import abstractmethod
 from viewer.types import *
 
 def _cudaGetErrorEnum(error):
-    if isinstance(error, cuda.CUresult):
-        err, name = cuda.cuGetErrorName(error)
-        return name if err == cuda.CUresult.CUDA_SUCCESS else "<unknown>"
+    if isinstance(error, driver.CUresult):
+        err, name = driver.cuGetErrorName(error)
+        return name if err == driver.CUresult.CUDA_SUCCESS else "<unknown>"
     else:
         raise RuntimeError('Unknown error type: {}'.format(error))
 
@@ -108,7 +108,8 @@ class NumpyImage(Image):
 
 # TODO: Seperate these out so that we can skip installation of some stuff
 try:
-    import cuda
+    # import cuda.bindings as cuda
+    from cuda.bindings import driver
     # TODO: Catch torch import error too
     class TorchImage(Image):
         """ Image viewer where the image to be shown comes from Torch tensor **on the GPU**. """
@@ -122,9 +123,9 @@ try:
 
             if img.shape[1] != self.texture.res_x or img.shape[0] != self.texture.res_y:
                 if self._cuda_resource is not None:
-                    checkCudaErrors(cuda.cuGraphicsUnregisterResource(self._cuda_resource))
+                    checkCudaErrors(driver.cuGraphicsUnregisterResource(self._cuda_resource))
                 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, img.shape[1], img.shape[0], 0, GL_RGB, GL_UNSIGNED_BYTE, img.cpu().numpy())
-                self._cuda_resource = checkCudaErrors(cuda.cuGraphicsGLRegisterImage(self.texture.id, GL_TEXTURE_2D, cuda.CUgraphicsRegisterFlags.CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD))
+                self._cuda_resource = checkCudaErrors(driver.cuGraphicsGLRegisterImage(self.texture.id, GL_TEXTURE_2D, driver.CUgraphicsRegisterFlags.CU_GRAPHICS_REGISTER_FLAGS_WRITE_DISCARD))
                 self.texture.res_x = img.shape[1]
                 self.texture.res_y = img.shape[0]
             else:
@@ -132,24 +133,24 @@ try:
                 if img.shape[-1] == 3:
                     img = torch.cat([img, 255 * torch.ones((img.shape[0], img.shape[1], 1), device=img.device, dtype=torch.uint8)], -1)
                 # Copy to OpenGL texture
-                checkCudaErrors(cuda.cuGraphicsMapResources(1, self._cuda_resource, 0))
-                cuda_array = checkCudaErrors(cuda.cuGraphicsSubResourceGetMappedArray(self._cuda_resource, 0, 0))
-                copy_params = cuda.CUDA_MEMCPY3D()
-                copy_params.srcMemoryType = cuda.CUmemorytype.CU_MEMORYTYPE_DEVICE
+                checkCudaErrors(driver.cuGraphicsMapResources(1, self._cuda_resource, 0))
+                cuda_array = checkCudaErrors(driver.cuGraphicsSubResourceGetMappedArray(self._cuda_resource, 0, 0))
+                copy_params = driver.CUDA_MEMCPY3D()
+                copy_params.srcMemoryType = driver.CUmemorytype.CU_MEMORYTYPE_DEVICE
                 copy_params.srcDevice = img.data_ptr()
                 copy_params.srcPitch = self.texture.res_x * 4
-                copy_params.dstMemoryType = cuda.CUmemorytype.CU_MEMORYTYPE_ARRAY
+                copy_params.dstMemoryType = driver.CUmemorytype.CU_MEMORYTYPE_ARRAY
                 copy_params.dstArray = cuda_array
                 copy_params.WidthInBytes = self.texture.res_x * 4
                 copy_params.Height = self.texture.res_y
                 copy_params.Depth = 1
-                checkCudaErrors(cuda.cuMemcpy3D(copy_params))
-                checkCudaErrors(cuda.cuGraphicsUnmapResources(1, self._cuda_resource, 0))
+                checkCudaErrors(driver.cuMemcpy3D(copy_params))
+                checkCudaErrors(driver.cuGraphicsUnmapResources(1, self._cuda_resource, 0))
 
         def destroy(self):
             """ Delete the 'cuda_resource' then delete the OpenGL texture. """
             if self._cuda_resource is not None:
-                checkCudaErrors(cuda.cuGraphicsUnregisterResource(self._cuda_resource))
+                checkCudaErrors(driver.cuGraphicsUnregisterResource(self._cuda_resource))
             super().destroy()
         
         def server_send(self):
