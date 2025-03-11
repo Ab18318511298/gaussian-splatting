@@ -113,9 +113,18 @@ class GaussianViewer(Viewer):
     
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("model_path")
-    parser.add_argument("mode", choices=["local", "client", "server"])
-    parser.add_argument("--iter", type=int, default=7000)
+    subparsers = parser.add_subparsers(title="mode", dest="mode", required=True)
+    local = subparsers.add_parser("local")
+    local.add_argument("model_path")
+    local.add_argument("iter", type=int, default=7000)
+    client = subparsers.add_parser("client")
+    client.add_argument("--ip", default="localhost")
+    client.add_argument("--port", type=int, default=6009)
+    server = subparsers.add_parser("server")
+    server.add_argument("model_path")
+    server.add_argument("iter", type=int, default=7000)
+    server.add_argument("--ip", default="localhost")
+    server.add_argument("--port", type=int, default=6009)
     args = parser.parse_args()
 
     match args.mode:
@@ -129,6 +138,6 @@ if __name__ == "__main__":
     if mode is ViewerMode.CLIENT:
         viewer = GaussianViewer(mode)
         viewer.run()
-
-    viewer = GaussianViewer.from_ply(args.model_path, args.iter, mode)
-    viewer.run()
+    else:
+        viewer = GaussianViewer.from_ply(args.model_path, args.iter, mode)
+        viewer.run()

@@ -1,11 +1,12 @@
 import numpy as np
 from . import Widget
+from ..types import ViewerMode
 from typing import List
 from imgui_bundle import implot, imgui
 
 class PerformanceMonitor(Widget):
     # TODO: Support single field
-    def __init__(self, fields: List[str], add_other: bool=True, history: int=100):
+    def __init__(self, mode: ViewerMode, fields: List[str], add_other: bool=True, history: int=100):
         """
         Show the statistics and plot of time taken per frame as a realtime line plot.
         
@@ -16,6 +17,7 @@ class PerformanceMonitor(Widget):
                         field is assumed to be the total frame time.
             history: Length of history to be kept.
         """
+        super().__init__(mode)
         self.add_other = add_other
         if add_other:
             self.fields= fields[:-1] + ["Other"]
@@ -65,3 +67,11 @@ class PerformanceMonitor(Widget):
                 implot.plot_line(self.fields[i], self.times[self.fields[i]], offset=self.offset)
             implot.plot_inf_lines("FPS", self.fps, flags=implot.InfLinesFlags_.horizontal)
             implot.end_plot()
+    
+    def server_send(self):
+        return None, { "offset": self.offset, "times": { field: times[self.offset] for field, times in self.times.items() } }
+    
+    def client_recv(self, _, text):
+        self.offset = text["offset"]
+        for field, times in self.times.items():
+            times[self.offset] = text["times"][field]
