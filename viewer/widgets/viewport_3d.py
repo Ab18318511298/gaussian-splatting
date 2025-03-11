@@ -10,6 +10,7 @@ class Viewport3D(Widget):
         self.title = title
         self.img = image
         self.camera = camera
+        self.camera_types = ["FPS", "Orbit", "Trackball"]
     
     def setup(self):
         self.img.setup()
@@ -21,10 +22,12 @@ class Viewport3D(Widget):
     
     def step(self, img):
         self.img.step(img)
-
+    
     def show_gui(self):
         # TODO: Use dock builder to build a layout
         with imgui_ctx.begin(f"{self.title} Camera"):
+            imgui.combo("Camera Type", 0, self.camera_types)
+            imgui.separator_text("Camera Settings")
             self.camera.show_gui()
         self.img.show_gui()
         

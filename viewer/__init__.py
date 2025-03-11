@@ -40,7 +40,6 @@ class Viewer(ABC):
 
     def setup(self):
         """ Go over all of the widgets and initialize them """
-        self.glfw_win = glfw_utils.glfw_window_hello_imgui()
         for _, widget in vars(self).items():
             if isinstance(widget, Widget):
                 widget.setup()
@@ -286,6 +285,7 @@ class Viewer(ABC):
             with serve(self._server_loop, ip, port, max_size=None) as server:
                 server_thread = threading.Thread(target=server.serve_forever)
                 server_thread.start()
+                self.setup()
                 while True:
                     try:
                         time.sleep(1)
@@ -294,6 +294,7 @@ class Viewer(ABC):
                         server.shutdown()
                         server_thread.join()
                         break
+                self.destroy()
 
     def step(self):
         """ Your application logic goes here. """

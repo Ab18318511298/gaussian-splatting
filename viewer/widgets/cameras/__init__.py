@@ -115,10 +115,21 @@ class Camera(Widget):
         return self.projection @ self.to_camera
 
     def show_gui(self) -> bool:
+        updated, self.fov_y = imgui.slider_angle("FoV Y", self.fov_y, 0, 90)
+        if updated:
+            self.compute_fov_x()
+        
+        updated, [self.res_x, self.res_y] = imgui.slider_int2("Resolution", [self.res_x, self.res_y], 1, 4096)
+        if updated:
+            self.compute_fov_x()
+        
         curr_time = imgui.get_time()
         self.delta_time = curr_time - self.last_frame_time
         self.last_frame_time = curr_time
         return False
+    
+    def compute_fov_x(self):
+        self.fov_x = 2 * np.arctan(np.tan(self.fov_y / 2) * (self.res_x / self.res_y))
     
     def draw_camera(self, camera: 'Camera', texture: Texture2D, thickness: float=1.0, color: tuple=(1.0, 1.0, 1.0)):
         """

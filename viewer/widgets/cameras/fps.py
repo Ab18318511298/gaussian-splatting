@@ -16,6 +16,7 @@ class FPSCamera(Camera):
         self.mouse_speed = 2
         self.radians_per_pixel = np.pi / 150
         self.invert_mouse = False
+        self.current_type = "FPS"
     
     def process_mouse_input(self) -> bool:
         if imgui.is_mouse_dragging(0):
@@ -75,6 +76,6 @@ class FPSCamera(Camera):
         return update
     
     def show_gui(self):
-        # TODO: Properly do this (respect focus etc)
         super().show_gui()
-        imgui.checkbox("Invert Mouse", self.invert_mouse)
+        _, self.speed = imgui.slider_float("Speed", self.speed, 0.1, 10)
+        _, self.invert_mouse = imgui.checkbox("Invert Mouse", self.invert_mouse)
