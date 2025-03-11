@@ -106,11 +106,26 @@ class NumpyImage(Image):
         self.img = np.frombuffer(binary, dtype=np.uint8).reshape(text["shape"])
 
 
-# TODO: Seperate these out so that we can skip installation of some stuff
+# Check if 'cuda-python' and 'torch' are available
+enable_torch_image = True
 try:
     # import cuda.bindings as cuda
     from cuda.bindings import driver
-    # TODO: Catch torch import error too
+except ImportError:
+    print("WARNING: 'cuda-python' not found. Stubbing 'TorchImage' with 'NumpyImage'.")
+    enable_torch_image = False
+
+try:
+    import torch
+except ImportError:
+    print("WARNING: 'torch' not found. Stubbing 'TorchImage' with 'NumpyImage'.")
+    enable_torch_image = False
+else:
+    if not torch.cuda.is_available():
+        print("WARNING: 'torch' is not compiled with CUDA support. Stubbing 'TorchImage' with 'NumpyImage'.")
+        enable_torch_image = False
+
+if enable_torch_image:
     class TorchImage(Image):
         """ Image viewer where the image to be shown comes from Torch tensor **on the GPU**. """
         _cuda_resource = None
@@ -156,9 +171,16 @@ try:
         def server_send(self):
             return memoryview(self.img.cpu().numpy()), {"shape": tuple(self.img.shape)}
 
-        def client_recv(self, binary, dict):
-            raise NotImplementedError("'TorchImage' shouldn't be used in client mode.")
-            
-except ImportError:
-    print("WARNING: 'cuda-python' not found. Stubbing 'TorchImage' with 'NumpyImage'.")
-    TorchImage = NumpyImage
+        def client_recv(self, binary, text):
+            img = np.frombuffer(binary, dtype=np.uint8).reshape(text["shape"])
+            self.img = torch.from_numpy(img).to(0)
+
+else:
+    class TorchImage(NumpyImage):
+        # Update the step function to convert the input to a tensor to numpy array
+        def step(self, img):
+            if not isinstance(img, np.ndarray):
+                # A tensor
+                img = img.detach().cpu().numpy()
+            # Otherwise it's already a numpy array
+            self.img = img
