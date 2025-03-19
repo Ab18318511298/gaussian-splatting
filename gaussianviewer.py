@@ -1,13 +1,14 @@
 import os
+from OpenGL.GL import *
 from threading import Lock
 from argparse import ArgumentParser
-from imgui_bundle import imgui_ctx
+from imgui_bundle import imgui_ctx, imgui
 from viewer import Viewer
 from viewer.types import ViewerMode
 from viewer.widgets.image import TorchImage
 from viewer.widgets.cameras.fps import FPSCamera
-from viewer.widgets.viewport_3d import Viewport3D
 from viewer.widgets.monitor import PerformanceMonitor
+from viewer.widgets.ellipsoid_viewer import EllipsoidViewer
 
 class Dummy(object):
     pass
@@ -76,37 +77,70 @@ class GaussianViewer(Viewer):
         viewer.pipe = pipe
         viewer.gaussians = gaussians
         viewer.separate_sh = separate_sh
+        viewer.background = torch.tensor([0,0,0], dtype=torch.float32, device="cuda")
         return viewer
 
     def create_widgets(self):
-        camera = FPSCamera(self.mode, 1297, 840, 47, 0.001, 100)
-        img = TorchImage(self.mode)
-        self.point_view = Viewport3D(self.mode, "Point View", img, camera)
+        self.camera = FPSCamera(self.mode, 1297, 840, 47, 0.001, 100)
+        self.point_view = TorchImage(self.mode)
         self.scaling_modifier = 1.0
+        self.ellipsoid_viewer = EllipsoidViewer(self.mode)
         self.monitor = PerformanceMonitor(self.mode, ["Render"], add_other=False)
 
+        # Render modes
+        self.render_modes = ["Splats", "Ellipsoids"]
+        self.render_mode = 0
+
     def step(self):
-        camera = self.point_view.camera
+        camera = self.camera
         world_to_view = torch.from_numpy(camera.to_camera).cuda().transpose(0, 1)
         full_proj_transform = torch.from_numpy(camera.full_projection).cuda().transpose(0, 1)
         camera = MiniCam(camera.res_x, camera.res_y, camera.fov_y, camera.fov_x, camera.z_near, camera.z_far, world_to_view, full_proj_transform)
 
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
-        with torch.no_grad():
-            with self.gaussian_lock:
-                net_image = render(camera, self.gaussians, self.pipe, self.background, scaling_modifier=self.scaling_modifier, use_trained_exp=self.dataset.train_test_exp, separate_sh=self.separate_sh)["render"]
-            net_image = net_image.permute(1, 2, 0)
-        end.record()
-        end.synchronize()
+        if self.ellipsoid_viewer.num_gaussians is None:
+            self.ellipsoid_viewer.upload(
+                self.gaussians.get_xyz.detach().cpu().numpy(),
+                self.gaussians.get_rotation.detach().cpu().numpy(),
+                self.gaussians.get_scaling.detach().cpu().numpy(),
+                self.gaussians.get_opacity.detach().cpu().numpy(),
+                self.gaussians.get_features_dc.detach().cpu().numpy()
+            )
+        
+        if self.render_mode == 0:
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
+            with torch.no_grad():
+                with self.gaussian_lock:
+                    net_image = render(camera, self.gaussians, self.pipe, self.background, scaling_modifier=self.scaling_modifier, use_trained_exp=self.dataset.train_test_exp, separate_sh=self.separate_sh)["render"]
+                net_image = net_image.permute(1, 2, 0)
+            end.record()
+            end.synchronize()
+            self.point_view.step(net_image)
+            render_time = start.elapsed_time(end)
+        if self.render_mode == 1:
+            self.ellipsoid_viewer.step(self.camera)
+            render_time = 0
 
-        self.point_view.step(net_image)
-        self.monitor.step([start.elapsed_time(end)])
+        self.monitor.step([render_time])
     
     def show_gui(self):
+        with imgui_ctx.begin(f"Point View Settings"):
+            _, self.render_mode = imgui.list_box("Render Mode", self.render_mode, self.render_modes)
+            imgui.separator_text("Camera Settings")
+            self.camera.show_gui()
+
         with imgui_ctx.begin("Point View"):
-            self.point_view.show_gui()
+            if self.render_mode == 0:
+                self.point_view.show_gui()
+            else:
+                self.ellipsoid_viewer.show_gui()
+
+            if imgui.is_item_hovered():
+                self.camera.process_mouse_input()
+            
+            if imgui.is_item_focused() or imgui.is_item_hovered():
+                self.camera.process_keyboard_input()
         
         with imgui_ctx.begin("Perfomance"):
             self.monitor.show_gui()
