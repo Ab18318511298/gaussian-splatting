@@ -83,13 +83,15 @@ class GaussianViewer(Viewer):
     def create_widgets(self):
         self.camera = FPSCamera(self.mode, 1297, 840, 47, 0.001, 100)
         self.point_view = TorchImage(self.mode)
-        self.scaling_modifier = 1.0
         self.ellipsoid_viewer = EllipsoidViewer(self.mode)
         self.monitor = PerformanceMonitor(self.mode, ["Render"], add_other=False)
 
         # Render modes
         self.render_modes = ["Splats", "Ellipsoids"]
         self.render_mode = 0
+
+        # Render settings
+        self.scaling_modifier = 1.0
 
     def step(self):
         camera = self.camera
@@ -127,6 +129,16 @@ class GaussianViewer(Viewer):
     def show_gui(self):
         with imgui_ctx.begin(f"Point View Settings"):
             _, self.render_mode = imgui.list_box("Render Mode", self.render_mode, self.render_modes)
+
+            imgui.separator_text("Render Settings")
+            if self.render_mode == 0:
+                _, self.scaling_modifier = imgui.drag_float("Scaling Factor", self.scaling_modifier, v_min=0, v_max=10, v_speed=0.01)
+            if self.render_mode == 1:
+                _, self.ellipsoid_viewer.scaling_modifier = imgui.drag_float("Scaling Factor", self.ellipsoid_viewer.scaling_modifier, v_min=0, v_max=10, v_speed=0.01)
+                
+                _, self.ellipsoid_viewer.render_floaters = imgui.checkbox("Render Floaters", self.ellipsoid_viewer.render_floaters)
+                _, self.ellipsoid_viewer.limit = imgui.drag_float("Alpha Threshold", self.ellipsoid_viewer.limit, v_min=0, v_max=1, v_speed=0.01)
+
             imgui.separator_text("Camera Settings")
             self.camera.show_gui()
 
@@ -142,7 +154,7 @@ class GaussianViewer(Viewer):
             if imgui.is_item_focused() or imgui.is_item_hovered():
                 self.camera.process_keyboard_input()
         
-        with imgui_ctx.begin("Perfomance"):
+        with imgui_ctx.begin("Performance"):
             self.monitor.show_gui()
     
 if __name__ == "__main__":

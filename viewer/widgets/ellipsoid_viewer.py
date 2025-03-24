@@ -23,7 +23,8 @@ _vert_shader = """
 
 uniform mat4 MVP;
 uniform float alpha_limit;
-// uniform int stage;
+uniform int stage;
+uniform float scaling_modifier;
 
 layout (std430, binding = 0) buffer BoxCenters {
     float centers[];
@@ -97,7 +98,7 @@ void main() {
     float a = alphas[boxID];
 
     // Early exit
-    if (a < alpha_limit) {
+    if ((stage == 0 && a < alpha_limit) || (stage == 1 && a >= alpha_limit)) {
         gl_Position = vec4(0,0,0,0);
         return;
     }
@@ -105,7 +106,7 @@ void main() {
     ellipsoidCenter = vec3(centers[3 * boxID + 0], centers[3 * boxID + 1], centers[3 * boxID + 2]);
 	alphaVert = a;
 	ellipsoidScale = vec3(scales[3 * boxID + 0], scales[3 * boxID + 1], scales[3 * boxID + 2]);
-	ellipsoidScale = 2 * ellipsoidScale;
+	ellipsoidScale = 2 * ellipsoidScale * scaling_modifier;
 
 	vec4 q = rots[boxID];
 	ellipsoidRotation = transpose(quatToMat3(q));
@@ -140,7 +141,7 @@ _frag_shader = """
 
 uniform mat4 MVP;
 uniform float alpha_limit;
-// uniform int stage;
+uniform int stage;
 uniform vec3 rayOrigin;
 
 in vec3 worldPos;
@@ -213,8 +214,7 @@ void main(void) {
 
 	gl_FragDepth = newPos.z;
 
-	// float a = stage == 0 ? 1.0 : 0.05f;
-    float a = 1.0;
+	float a = stage == 0 ? 1.0 : 0.05f;
 
 	out_color = vec4(align * colorVert, a);
 // 	out_id = boxID;
@@ -226,6 +226,8 @@ class EllipsoidViewer(Widget):
         super().__init__(mode)
         self.texture = Texture2D()
         self.limit = 0.2
+        self.scaling_modifier = 1
+        self.render_floaters = False
         self.num_gaussians = None
     
     def setup(self):
@@ -351,8 +353,8 @@ class EllipsoidViewer(Widget):
 		# drawBuffers[1] = GL_COLOR_ATTACHMENT1;
         # glDrawBuffers(1, [GL_COLOR_ATTACHMENT0])
 
-        glEnable(GL_DEPTH_TEST);
-        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST)
+        glDisable(GL_BLEND)
 
         # Use the shader program
         glUseProgram(self._shader)
@@ -360,9 +362,19 @@ class EllipsoidViewer(Widget):
         glUniformMatrix4fv(glGetUniformLocation(self._shader, "MVP"), 1, GL_TRUE, camera.full_projection)
         glUniform3fv(glGetUniformLocation(self._shader, "rayOrigin"), 1, camera.origin)
         glUniform1f(glGetUniformLocation(self._shader, "alpha_limit"), float(self.limit))
-		# _paramStage.set(0);
-		# mesh.render(G);
+        glUniform1i(glGetUniformLocation(self._shader, "stage"), 0)
+        glUniform1f(glGetUniformLocation(self._shader, "scaling_modifier"), float(self.scaling_modifier))
         glDrawArraysInstanced(GL_TRIANGLES, 0, 36, self.num_gaussians)
+
+        if self.render_floaters:
+            glDepthMask(GL_FALSE)
+            glEnable(GL_BLEND);
+            glBlendEquation(GL_FUNC_ADD)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+            glUniform1i(glGetUniformLocation(self._shader, "stage"), 1)
+            glDrawArraysInstanced(GL_TRIANGLES, 0, 36, self.num_gaussians)
+            glDepthMask(GL_TRUE)
+            glDisable(GL_BLEND)
 
         # Unbind program
         glUseProgram(0)
