@@ -253,7 +253,7 @@ class EllipsoidViewer(Widget):
         glBindVertexArray(self._vao)
 
         # Create a query for timing
-        # self.query = glCreateQueries(1)
+        self.query = glGenQueries(1)[0]
 
     def destroy(self):
         glDeleteTextures(1, int(self._color_texture.id))
@@ -263,7 +263,7 @@ class EllipsoidViewer(Widget):
         glDeleteBuffers(1, int(self._scales))
         glDeleteBuffers(1, int(self._alphas))
         glDeleteBuffers(1, int(self._colors))
-        # glDeleteQueries(1, int(self.query))
+        glDeleteQueries(1, int(self.query))
         if self._fbo is not None:
             glDeleteFramebuffers(1, int(self._fbo))
         glDeleteProgram(self._shader)
@@ -330,7 +330,7 @@ class EllipsoidViewer(Widget):
         glBindBuffer(GL_ARRAY_BUFFER, 0)
 
     def step(self, camera: Camera):
-        # glBeginQuery(GL_TIME_ELAPSED, self.query)
+        glBeginQuery(GL_TIME_ELAPSED, self.query)
         if self._color_texture.res_x != camera.res_x or \
             self._color_texture.res_y != camera.res_y:
             self._create_fbo(camera.res_x, camera.res_y)
@@ -371,7 +371,7 @@ class EllipsoidViewer(Widget):
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
         # Measure time required for rendering
-        # glEndQuery(GL_TIME_ELAPSED)
+        glEndQuery(GL_TIME_ELAPSED)
 
     def server_send(self):
         raise NotImplementedError()

@@ -120,7 +120,7 @@ class GaussianViewer(Viewer):
             render_time = start.elapsed_time(end)
         if self.render_mode == 1:
             self.ellipsoid_viewer.step(self.camera)
-            render_time = 0
+            render_time = glGetQueryObjectuiv(self.ellipsoid_viewer.query, GL_QUERY_RESULT) / 1e6
 
         self.monitor.step([render_time])
     
