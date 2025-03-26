@@ -7,8 +7,8 @@ class Widget(ABC):
 
     def __init__(self, mode: ViewerMode):
         self.mode = mode
-        self.widget_id = self.id
-        self.id += 1
+        self.widget_id = Widget.id
+        Widget.id += 1
 
     def setup(self):
         """

@@ -94,6 +94,8 @@ class Viewer(ABC):
             return
         self.num_connections += 1
 
+        glfw.make_context_current(self.window)
+
         # Main Loop
         try:
             while True:
@@ -104,6 +106,8 @@ class Viewer(ABC):
         except ConnectionClosedError as e:
             print(f"ERROR: Connection closed with error: {e}")
             self.num_connections -= 1
+
+        glfw.make_context_current(None)
 
     def _server_send(self, websocket: ServerConnection):
         """
@@ -158,7 +162,7 @@ class Viewer(ABC):
             all_binaries.append(binary)
 
         # Assemble the data
-        all_data = {}
+        all_data = defaultdict(dict)
         for widget_id, metadata in metadata.items():
             all_data[int(widget_id)]["metadata"] = metadata
         for widget_id, binary in zip(binary_to_widget, all_binaries):
@@ -281,11 +285,20 @@ class Viewer(ABC):
             self._runner_params.imgui_window_params.default_imgui_window_type = hello_imgui.DefaultImGuiWindowType.provide_full_screen_dock_space
             immapp.run(self._runner_params, self._addon_params)
         if self.mode is SERVER:
-            # Start the server
+            # Initialize OpenGL and setup widgets
+            glfw.init()
+            glfw.window_hint(glfw.VISIBLE, glfw.FALSE)
+            self.window = glfw.create_window(1920, 1080, "", None, None)
+            glfw.make_context_current(self.window)
+            self.setup()
+
+            # Release window so that the server thread can use it
+            glfw.make_context_current(None)
+
+            # Start server
             with serve(self._server_loop, ip, port, max_size=None) as server:
                 server_thread = threading.Thread(target=server.serve_forever)
                 server_thread.start()
-                self.setup()
                 while True:
                     try:
                         time.sleep(1)
@@ -294,7 +307,10 @@ class Viewer(ABC):
                         server.shutdown()
                         server_thread.join()
                         break
-                self.destroy()
+            
+            # Reacquire GLFW context and free resources
+            glfw.make_context_current(self.window)
+            self.destroy()
 
     def step(self):
         """ Your application logic goes here. """
