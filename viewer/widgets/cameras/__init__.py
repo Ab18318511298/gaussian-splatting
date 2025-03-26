@@ -84,6 +84,7 @@ class Camera(Widget):
 
     @property
     def to_camera(self) -> np.ndarray:
+        print(self.to_world)
         return np.linalg.inv(self.to_world)
     
     @property
@@ -184,6 +185,6 @@ class Camera(Widget):
         self.forward = mat[:3, 2]
         self.forward = self.forward / np.linalg.norm(self.forward)
         self.up = -mat[:3, 1]
-        self.up = self.forward / np.linalg.norm(self.up)
+        self.up = self.up / np.linalg.norm(self.up)
         self.right = mat[:3, 0]
-        self.right = self.forward / np.linalg.norm(self.right)
+        self.right = self.right / np.linalg.norm(self.right)
