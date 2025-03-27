@@ -31,6 +31,7 @@ class Image(Widget):
     def __init__(self, mode: ViewerMode):
         self.texture = Texture2D()
         self.img = None
+        self.step_called = False
         super().__init__(mode)
 
     def setup(self):
@@ -57,6 +58,7 @@ class Image(Widget):
         of the image, then make sure to copy the image before passing it.
         """
         self.img = img
+        self.step_called = True
 
     @abstractmethod
     def _upload(self):
@@ -97,9 +99,12 @@ class NumpyImage(Image):
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, img.shape[1], img.shape[0], GL_RGB, GL_UNSIGNED_BYTE, img)
     
     def server_send(self):
+        if not self.step_called:
+            return None, None
         img = self.img
         if img.dtype != np.uint8:
             img = (np.clip(img, 0, 1) * 255).astype(np.uint8)
+        self.step_called = False
         return memoryview(np.ascontiguousarray(img)), {"shape": tuple(img.shape)}
     
     def client_recv(self, binary, text):
@@ -169,9 +174,12 @@ if enable_torch_image:
             super().destroy()
         
         def server_send(self):
+            if not self.step_called:
+                return None, None
             img = self.img
             if img.dtype != torch.uint8:
                 img = (torch.clip(img, 0, 1) * 255).byte()
+            self.step_called = False
             return memoryview(img.contiguous().cpu().numpy()), {"shape": tuple(img.shape)}
 
         def client_recv(self, binary, text):
