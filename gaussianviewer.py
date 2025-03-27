@@ -157,6 +157,16 @@ class GaussianViewer(Viewer):
         with imgui_ctx.begin("Performance"):
             self.monitor.show_gui()
     
+    def client_send(self):
+        return None, {
+            "scaling_modifier": self.scaling_modifier,
+            "render_mode": self.render_mode
+        }
+    
+    def server_recv(self, _, text):
+        self.scaling_modifier = text["scaling_modifier"]
+        self.render_mode = text["render_mode"]
+    
 if __name__ == "__main__":
     parser = ArgumentParser()
     subparsers = parser.add_subparsers(title="mode", dest="mode", required=True)

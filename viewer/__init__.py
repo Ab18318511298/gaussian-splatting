@@ -134,15 +134,25 @@ class Viewer(ABC):
             all_binaries.append(binary)
             binary_to_widget.append("viewer")
         
+        t0 = time.time()
         # Send metadata
         websocket.send(json.dumps(metadata), text=True)
+        t1 = time.time()
 
         # Send binary mapping
         websocket.send(json.dumps(binary_to_widget), text=True)
+        t2 = time.time()
 
         # Send binaries
         for binary in all_binaries:
             websocket.send(binary, text=False)
+        t3 = time.time()
+
+        print("Start")
+        print(t1 - t0)
+        print(t2 - t1)
+        print(t3 - t2)
+        print("End")
 
     def _server_recv(self, websocket: ServerConnection):
         """
@@ -164,14 +174,20 @@ class Viewer(ABC):
         # Assemble the data
         all_data = defaultdict(dict)
         for widget_id, metadata in metadata.items():
-            all_data[int(widget_id)]["metadata"] = metadata
+            if widget_id == "viewer":
+                all_data["viewer"]["metadata"] = metadata
+            else:
+                all_data[int(widget_id)]["metadata"] = metadata
         for widget_id, binary in zip(binary_to_widget, all_binaries):
             all_data[widget_id]["binary"] = binary
 
         # Update the widgets
         for widget_id, data in all_data.items():
-            widget = self.widget_id_to_widget[int(widget_id)]
-            widget.server_recv(data.get("binary", None), data.get("metadata", None))
+            if widget_id == "viewer":
+                self.server_recv(data.get("binary", None), data.get("metadata", None))
+            else:
+                widget = self.widget_id_to_widget[int(widget_id)]
+                widget.server_recv(data.get("binary", None), data.get("metadata", None))
     
     def _client_loop(self, ip: str, port: int):
         """
@@ -246,14 +262,20 @@ class Viewer(ABC):
         # Assemble the data
         all_data = defaultdict(dict)
         for widget_id, metadata in metadata.items():
-            all_data[int(widget_id)]["metadata"] = metadata
+            if widget_id == "viewer":
+                all_data["viewer"]["metadata"] = metadata
+            else:
+                all_data[int(widget_id)]["metadata"] = metadata
         for widget_id, binary in zip(binary_to_widget, all_binaries):
             all_data[widget_id]["binary"] = binary
 
         # Update the widgets
         for widget_id, data in all_data.items():
-            widget = self.widget_id_to_widget[int(widget_id)]
-            widget.client_recv(data.get("binary", None), data.get("metadata", None))
+            if widget_id == "viewer":
+                self.client_recv(data.get("binary", None), data.get("metadata", None))
+            else:
+                widget = self.widget_id_to_widget[int(widget_id)]
+                widget.client_recv(data.get("binary", None), data.get("metadata", None))
 
     def run(self, ip: str = "localhost", port: int = 6009):
         self.create_widgets()
