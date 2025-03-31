@@ -2,7 +2,7 @@ import glfw
 import json
 import time
 import threading
-from types import Optional
+from typing import Optional
 from collections import defaultdict
 from websockets.exceptions import ConnectionClosed, ConnectionClosedOK, ConnectionClosedError
 from websockets.sync.server import serve, ServerConnection
@@ -10,7 +10,7 @@ from websockets.sync.client import connect, ClientConnection
 from .types import *
 from viewer.widgets import Widget
 from abc import ABC, abstractmethod
-from imgui_bundle import immapp, hello_imgui, glfw_utils
+from imgui_bundle import immapp, hello_imgui
 
 # TODO: Figure out minimize crash
 class Viewer(ABC):

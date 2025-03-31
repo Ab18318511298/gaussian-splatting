@@ -1,3 +1,4 @@
+import glfw
 import numpy as np
 from . import Camera
 from ...types import ViewerMode
@@ -18,6 +19,22 @@ class FPSCamera(Camera):
         self.invert_mouse = False
         self.current_type = "FPS"
     
+    def setup(self):
+        self.movement_keys = {
+            "w": imgui.Key[glfw.get_key_name(glfw.KEY_UNKNOWN, glfw.get_key_scancode(glfw.KEY_W))],
+            "a": imgui.Key[glfw.get_key_name(glfw.KEY_UNKNOWN, glfw.get_key_scancode(glfw.KEY_A))],
+            "s": imgui.Key[glfw.get_key_name(glfw.KEY_UNKNOWN, glfw.get_key_scancode(glfw.KEY_S))],
+            "d": imgui.Key[glfw.get_key_name(glfw.KEY_UNKNOWN, glfw.get_key_scancode(glfw.KEY_D))],
+            "q": imgui.Key[glfw.get_key_name(glfw.KEY_UNKNOWN, glfw.get_key_scancode(glfw.KEY_Q))],
+            "e": imgui.Key[glfw.get_key_name(glfw.KEY_UNKNOWN, glfw.get_key_scancode(glfw.KEY_E))],
+            "j": imgui.Key[glfw.get_key_name(glfw.KEY_UNKNOWN, glfw.get_key_scancode(glfw.KEY_J))],
+            "k": imgui.Key[glfw.get_key_name(glfw.KEY_UNKNOWN, glfw.get_key_scancode(glfw.KEY_K))],
+            "l": imgui.Key[glfw.get_key_name(glfw.KEY_UNKNOWN, glfw.get_key_scancode(glfw.KEY_L))],
+            "i": imgui.Key[glfw.get_key_name(glfw.KEY_UNKNOWN, glfw.get_key_scancode(glfw.KEY_I))],
+            "o": imgui.Key[glfw.get_key_name(glfw.KEY_UNKNOWN, glfw.get_key_scancode(glfw.KEY_O))],
+            "u": imgui.Key[glfw.get_key_name(glfw.KEY_UNKNOWN, glfw.get_key_scancode(glfw.KEY_U))],
+        }
+    
     def process_mouse_input(self) -> bool:
         if imgui.is_mouse_dragging(0):
             delta = imgui.get_mouse_drag_delta()
@@ -34,39 +51,39 @@ class FPSCamera(Camera):
     def process_keyboard_input(self):
         update = False
 
-        if imgui.is_key_down(imgui.Key.w):
+        if imgui.is_key_down(self.movement_keys["w"]):
             self.origin += self.speed * self.forward * self.delta_time
             update = True
-        if imgui.is_key_down(imgui.Key.a):
+        if imgui.is_key_down(self.movement_keys["a"]):
             self.origin -= self.speed * self.right * self.delta_time
             update = True
-        if imgui.is_key_down(imgui.Key.q):
+        if imgui.is_key_down(self.movement_keys["q"]):
             self.origin -= self.speed * self.up * self.delta_time
             update = True
-        if imgui.is_key_down(imgui.Key.s):
+        if imgui.is_key_down(self.movement_keys["s"]):
             self.origin -= self.speed * self.forward * self.delta_time
             update = True
-        if imgui.is_key_down(imgui.Key.d):
+        if imgui.is_key_down(self.movement_keys["d"]):
             self.origin += self.speed * self.right * self.delta_time
             update = True
-        if imgui.is_key_down(imgui.Key.e):
+        if imgui.is_key_down(self.movement_keys["e"]):
             self.origin += self.speed * self.up * self.delta_time
             update = True
         
         angle_forward = 0.0
         angle_right = 0.0
         angle_up = 0.0
-        if imgui.is_key_down(imgui.Key.i):
+        if imgui.is_key_down(self.movement_keys["i"]):
             angle_right += 50 * self.radians_per_pixel * self.delta_time
-        if imgui.is_key_down(imgui.Key.k):
+        if imgui.is_key_down(self.movement_keys["k"]):
             angle_right -= 50 * self.radians_per_pixel * self.delta_time
-        if imgui.is_key_down(imgui.Key.j):
+        if imgui.is_key_down(self.movement_keys["j"]):
             angle_up += 50 * self.radians_per_pixel * self.delta_time
-        if imgui.is_key_down(imgui.Key.l):
+        if imgui.is_key_down(self.movement_keys["l"]):
             angle_up -= 50 * self.radians_per_pixel * self.delta_time
-        if imgui.is_key_down(imgui.Key.o):
+        if imgui.is_key_down(self.movement_keys["o"]):
             angle_forward += 50 * self.radians_per_pixel * self.delta_time
-        if imgui.is_key_down(imgui.Key.u):
+        if imgui.is_key_down(self.movement_keys["u"]):
             angle_forward -= 50 * self.radians_per_pixel * self.delta_time
 
         if angle_forward or angle_right or angle_up:
