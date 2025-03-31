@@ -15,7 +15,7 @@ from threading import Thread
 from viewer.types import ViewerMode
 from random import randint
 from utils.loss_utils import l1_loss, ssim
-from gaussian_renderer import render, network_gui
+from gaussian_renderer import render
 from gaussianviewer import GaussianViewer
 import sys
 from scene import Scene, GaussianModel
@@ -43,7 +43,7 @@ try:
 except:
     SPARSE_ADAM_AVAILABLE = False
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
+def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, viewer_mode):
     if not SPARSE_ADAM_AVAILABLE and opt.optimizer_type == "sparse_adam":
         sys.exit(f"Trying to use sparse adam but it is not installed, please install the correct rasterizer using pip install [3dgs_accel].")
 
@@ -57,10 +57,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         gaussians.restore(model_params, opt)
 
     # Initialize and start viewer in a separate thread
-    test_camera = scene.getTrainCameras().copy()[0]
-    viewer = GaussianViewer.from_gaussians(dataset, pipe, gaussians, SPARSE_ADAM_AVAILABLE, test_camera, ViewerMode.SERVER)
-    viewer_thd = Thread(target=viewer.run, daemon=True)
-    viewer_thd.start()
+    mode = ViewerMode.LOCAL if viewer_mode == "local" else ViewerMode.SERVER
+    viewer = GaussianViewer.from_gaussians(dataset, pipe, gaussians, SPARSE_ADAM_AVAILABLE, mode)
+    if viewer_mode != "none":
+        viewer_thd = Thread(target=viewer.run, daemon=True)
+        viewer_thd.start()
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
@@ -263,7 +264,7 @@ if __name__ == "__main__":
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[7_000, 30_000])
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000])
     parser.add_argument("--quiet", action="store_true")
-    parser.add_argument('--disable_viewer', action='store_true', default=False)
+    parser.add_argument('--viewer_mode', choices=['local', 'server', 'none'], default='local')
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
     args = parser.parse_args(sys.argv[1:])
@@ -275,7 +276,7 @@ if __name__ == "__main__":
     safe_state(args.quiet)
 
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
+    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args.viewer_mode)
 
     # All done
     print("\nTraining complete.")

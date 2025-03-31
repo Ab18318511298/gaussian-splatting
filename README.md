@@ -1,12 +1,27 @@
 # Python Viewer
 
-This viewer is as an replacement of the [SIBR Viewer](https://sibr.gitlabpages.inria.fr/?page=index.html&version=0.9.6) implemented completely in Python.
+This viewer is as an replacement of the [SIBR Viewer](https://sibr.gitlabpages.inria.fr/?page=index.html&version=0.9.6) implemented completely in Python. The viewer can run in three different modes:
+- `LOCAL`: Opens a window on the same device.
+- `SERVER`: Creates a websocket server on the device which would perform all of the computation to be displayed on another device.
+- `CLIENT`: Opens a window to display the GUI and connects to the websocket server.
+
+## Requirements
+The following packages are required for the viewer. These packages should be available in both the `server` and `client` environments.
+```
+imgui-bundle
+glfw
+PyOpenGL
+numpy
+cuda-python
+websockets
+```
 
 ## Creating a new Viewer
 To create a new viewer, you must inherit from the `Viewer` class and override the following function:
 - `__init__`: If you override this function, you must necessarily call the `__init__` of the parent class using `super().__init__(mode)` to ensure the state variables and appropriate modules are imported.
 - `create_widgets`: Overide this function to define widgets required by the viewer along with any additional state variables.
-- `step`: Define any computation in this function. This function will only be called on the server in network mode.
+- `import_server_modules`: Import any modules required only on the server here. This typically would involve packages such as `torch` and other local code dependancies which might not be available in the client environment. You should assume the modules imported here are only available in `server_(send|recv)` and `step` functions.
+- `step`: Define any computation in this function. This function will only be called on the server in network mode
 - `show_gui`: Define the GUI in this function. This function will only be called on the client in network mode.
 - `(client|server)_send`: Override this function to send any data from the client or server. The function should return a tuple with the first element being any binary data, and the second being a dictionary containing any text metadata. Either elements can be `None` if the viewer doesn't need to send that type of data. The default implementation returns `(None,None)`.
 - `(client|server)_recv`: Override this function to define how to update the viewer state with received data. The functions is expected to receive two arguments, the first being the binary data and, the second being the text.
@@ -32,8 +47,29 @@ Following is the list of widgets which are available/planned to be included in t
 |EllipsoidViewer|x|x|A widget to visualize gaussians as Ellipsoids||
 |EllipseViewer|||A widget to visualize 2D gaussians as Ellipses||
 |PixelInspector|||A widget which allows to zoom onto a texture and inspect pixels||
+|ImageCompare|||A image slider to compare two images side by side||
+|SphereViewer|||A widget to visualize spherical functions with multiple types of projections||
 
-# 3D Gaussian Splatting for Real-Time Radiance Field Rendering
+## Example Integration with 3DGS
+The architecture of the viewer allows us to have a single file which defines the GUI for viewer during optimization and after optimaztion in all three modes (local, server, client).
+The following paragraph describes how the new viewer is integrated with the optimization script.
+
+### Integration with Optimization Script
+The viewer runs in a seperate thread during training instead of in a lockstep fasion.
+All of the state required to render the scene such as the `GaussianModel` is passed to the viewer during initialization (See `GaussianViewer.from_gaussians`).
+Since the `GaussianModel` can change in while being rendered, we need to make sure to acquire a Mutex lock when updating and rendering the gaussians to avoid race conditions.
+Specifically, we acquire the lock while rendering in `GaussianViewer.step`, and when updating the model (`optimzer.step` and densification).
+
+### Scenarios
+#### During Optimization
+- **LOCAL**: `python train.py <gaussian_params> --viewer_mode local`.
+- **REMOTE**: On the server, `python train.py <gaussian_params> --viewer_mode server`. On the client `python gaussianviewer.py client --ip <ip>`
+#### Post Optimization
+- **LOCAL**: `python gaussianviewer.py local <path_to_model> <iter>`.
+- **REMOTE**: On the server, `python gaussianviewer.py server <path_to_model> <iter>`. On the client `python gaussianviewer.py client --ip <ip>`
+
+-----
+# 3D Gaussian Splatting for Real-Time Radiance Field Rendering (OLD)
 Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indicates equal contribution)<br>
 | [Webpage](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) | [Full Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_high.pdf) | [Video](https://youtu.be/T_kXY43VZnk) | [Other GRAPHDECO Publications](http://www-sop.inria.fr/reves/publis/gdindex.php) | [FUNGRAPH project page](https://fungraph.inria.fr) |<br>
 | [T&T+DB COLMAP (650MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip) | [Pre-trained Models (14 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/pretrained/models.zip) | [Viewers for Windows (60MB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/binaries/viewers.zip) | [Evaluation Images (7 GB)](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/evaluation/images.zip) |<br>

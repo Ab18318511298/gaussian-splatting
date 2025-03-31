@@ -193,7 +193,7 @@ if __name__ == "__main__":
 
     if mode is ViewerMode.CLIENT:
         viewer = GaussianViewer(mode)
-        viewer.run()
     else:
         viewer = GaussianViewer.from_ply(args.model_path, args.iter, mode)
-        viewer.run()
+
+    viewer.run()
