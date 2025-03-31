@@ -19,11 +19,12 @@ class Viewer(ABC):
     The child class must override the 'show_gui' function to build the GUI.
     It can can also override the 'step' function to perform any per frame
     computations required.
-    The '(send|recv)_(server|client)' should be used for message passing between
+    The '(server|client)_(send|recv)' should be used for message passing between
     the server and client for remote viewer support.
     """
     def __init__(self, mode: ViewerMode):
-        self.window_title = "Viewer"
+        if not hasattr(self, "window_title"):
+            self.window_title = "Viewer"
         self.should_exit = False
         self.num_connections = 0
 
@@ -39,14 +40,14 @@ class Viewer(ABC):
         if self.mode in LOCAL_SERVER:
             self.import_server_modules()
 
-    def setup(self):
+    def _setup(self):
         """ Go over all of the widgets and initialize them """
         for _, widget in vars(self).items():
             if isinstance(widget, Widget):
                 widget.setup()
                 self.widget_id_to_widget[widget.widget_id] = widget
 
-    def destroy(self):
+    def _destroy(self):
         """ Go over all of the widgets and free any manually allocated objects """
         for _, widget in vars(self).items():
             if isinstance(widget, Widget):
@@ -284,8 +285,8 @@ class Viewer(ABC):
             self._runner_params.app_window_params.window_title = self.window_title
             self._runner_params.imgui_window_params.show_status_bar = True
             self._runner_params.imgui_window_params.show_menu_bar = True
-            self._runner_params.callbacks.post_init = self.setup
-            self._runner_params.callbacks.before_exit = self.destroy
+            self._runner_params.callbacks.post_init = self._setup
+            self._runner_params.callbacks.before_exit = self._destroy
             self._runner_params.callbacks.show_gui = self._main
             self._runner_params.callbacks.show_status = self.show_status
             # Disable VSync
@@ -303,7 +304,7 @@ class Viewer(ABC):
             glfw.window_hint(glfw.VISIBLE, glfw.FALSE)
             self.window = glfw.create_window(1920, 1080, "", None, None)
             glfw.make_context_current(self.window)
-            self.setup()
+            self._setup()
 
             # Release window so that the server thread can use it
             glfw.make_context_current(None)
@@ -323,7 +324,7 @@ class Viewer(ABC):
             
             # Reacquire GLFW context and free resources
             glfw.make_context_current(self.window)
-            self.destroy()
+            self._destroy()
 
     def step(self):
         """ Your application logic goes here. """
