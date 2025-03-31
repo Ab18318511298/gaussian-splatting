@@ -1,3 +1,27 @@
+# Python Viewer
+
+This viewer is as an replacement of the [SIBR Viewer](https://sibr.gitlabpages.inria.fr/?page=index.html&version=0.9.6) implemented completely in Python.
+
+## Creating new Widgets
+To create a new widget, you must inherit from the `Widget` class and override the following functions:
+- `__init__`: If you override this function, you must necessarily call the `__init__` of the parent class using `super().__init__(mode)` to ensure an appropriate ID gets assigned the the widget which is required for correct functioning in network mode.
+- `setup`: This function will be called after initializing `glfw` and `OpenGL`. Setup related to the above two should go here (For eg. creating an OpenGL Texture).
+- `step`: Define any computation in this function. This function will only be called on the server in network mode.
+- `show_gui`: Define the GUI elements if any of the widget. This function will only be called on the client in network mode.
+- `(client|server)_send`: Override this function to send any data from the client or server. The function should return a tuple with the first element being any binary data, and the second being a dictionary containing any text metadata. Either elements can be `None` if the widget doesn't need to send that type of data. The default implementation returns `None,None`.
+- `(client|server)_recv`: Override this function to define how to update the widget state with received data. The functions is expected to receive two arguments, the first being the binary data and, the second being the text.
+
+## Widgets
+|Name|Local|Network|Description|Note|
+--------------------------------
+|NumpyImage|x|x|Displays a `np.ndarray` as a 2D Texture||
+--------------------------------
+|TorchImage|x|x|Displays a `torch.Tensor` as a 2D Texture w/o requiring a roundtrip to the CPU|Requires `cuda-python`|
+--------------------------------
+|PerformanceMonitor|x|x|A widget to display timings for different phases of your algorithm||
+--------------------------------
+<!-- |EllipsoidViewer|x|x|A widget to  -->
+
 # 3D Gaussian Splatting for Real-Time Radiance Field Rendering
 Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indicates equal contribution)<br>
 | [Webpage](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) | [Full Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_high.pdf) | [Video](https://youtu.be/T_kXY43VZnk) | [Other GRAPHDECO Publications](http://www-sop.inria.fr/reves/publis/gdindex.php) | [FUNGRAPH project page](https://fungraph.inria.fr) |<br>
