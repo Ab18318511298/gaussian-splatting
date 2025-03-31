@@ -1,4 +1,4 @@
-import torch
+from typing import Optional
 from viewer.types import ViewerMode
 from abc import ABC, abstractmethod
 
@@ -22,7 +22,7 @@ class Widget(ABC):
         This function won't be called when application is running in headless mode.
         """
 
-    def server_send(self):
+    def server_send(self) -> tuple[Optional[bytes], Optional[dict]]:
         """
         Send widget state to the client.
 
@@ -32,7 +32,7 @@ class Widget(ABC):
         """
         return None, None
     
-    def server_recv(self, binary, text):
+    def server_recv(self, binary: Optional[bytes], text: Optional[dict]):
         """
         Receive widget state from the client and update it.
 
@@ -41,7 +41,7 @@ class Widget(ABC):
             text (dict): Any text data sent received from the client
         """
     
-    def client_send(self):
+    def client_send(self) -> tuple[Optional[bytes], Optional[dict]]:
         """
         Send widget state to the server.
 
@@ -51,7 +51,7 @@ class Widget(ABC):
         """
         return None, None
 
-    def client_recv(self, binary, dict):
+    def client_recv(self, binary: Optional[bytes], text: Optional[dict]):
         """
         Send widget state to the server.
 

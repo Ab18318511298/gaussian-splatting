@@ -2,6 +2,7 @@ import glfw
 import json
 import time
 import threading
+from types import Optional
 from collections import defaultdict
 from websockets.exceptions import ConnectionClosed, ConnectionClosedOK, ConnectionClosedError
 from websockets.sync.server import serve, ServerConnection
@@ -331,18 +332,18 @@ class Viewer(ABC):
     def create_widgets(self):
         """ Define stateful widgets here. """
     
-    def server_send(self):
+    def server_send(self) -> tuple[Optional[bytes],Optional[dict]]:
         """ Send global viewer state to the client. """
         return None, None
     
-    def server_recv(self):
+    def server_recv(self, binary: Optional[bytes], text: Optional[dict]):
         """ Receive and process global viewer state from the client. """
 
-    def client_send(self):
+    def client_send(self) -> tuple[Optional[bytes],Optional[dict]]:
         """ Send global viewer state to the server. """
         return None, None
 
-    def client_recv(self):
+    def client_recv(self, binary: Optional[bytes], text: Optional[dict]):
         """ Receive and process global viewer state from the server. """
         pass
 
