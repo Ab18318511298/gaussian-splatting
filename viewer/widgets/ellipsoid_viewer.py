@@ -2,7 +2,7 @@ import numpy as np
 from . import Widget
 from OpenGL.GL import *
 from .cameras import Camera
-from ..types import Texture2D
+from ..types import Texture2D, CLIENT
 from imgui_bundle import imgui
 from OpenGL.GL.shaders import compileShader, compileProgram
 
@@ -224,11 +224,11 @@ void main(void) {
 class EllipsoidViewer(Widget):
     def __init__(self, mode):
         super().__init__(mode)
-        self.texture = Texture2D()
         self.limit = 0.2
         self.scaling_modifier = 1
         self.render_floaters = False
         self.num_gaussians = None
+        self.step_called = False
     
     def setup(self):
         """ Create the buffers for storing the gaussian parameters and the framebuffers to render to. """
@@ -256,6 +256,10 @@ class EllipsoidViewer(Widget):
 
         # Create a query for timing
         self.query = glGenQueries(1)[0]
+
+        # Create a dummy FBO because `step` is not called in CLIENT mode
+        if self.mode is CLIENT:
+            self._create_fbo(1, 1)
 
     def destroy(self):
         glDeleteTextures(1, int(self._color_texture.id))
@@ -385,11 +389,34 @@ class EllipsoidViewer(Widget):
         # Measure time required for rendering
         glEndQuery(GL_TIME_ELAPSED)
 
+        self.step_called = True
+
     def server_send(self):
-        raise NotImplementedError()
+        if not self.step_called:
+            return None, None
+        glBindTexture(GL_TEXTURE_2D, self._color_texture.id)
+        arr = glGetTexImage(GL_TEXTURE_2D, 0, GL_RGB, GL_UNSIGNED_BYTE)
+        glBindTexture(GL_TEXTURE_2D, 0)
+        self.step_called = False
+        return arr, {"shape": (self._color_texture.res_y, self._color_texture.res_x, 3)}
     
-    def client_recv(self, binary, dict):
-        raise NotImplementedError()
+    def client_recv(self, binary, text):
+        img = np.frombuffer(binary, dtype=np.uint8).reshape(text["shape"])
+        # import matplotlib.pyplot as plt
+        # plt.imshow(img)
+        # plt.show()
+        # exit()
+        res_y = text["shape"][0]
+        res_x = text["shape"][1]
+        # img = binary
+        glBindTexture(GL_TEXTURE_2D, self._color_texture.id)
+        if self._color_texture.res_x != res_x  or self._color_texture.res_y != res_y:
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, res_x, res_y, 0, GL_RGB, GL_UNSIGNED_BYTE, img)
+            self._color_texture.res_x = res_x
+            self._color_texture.res_y = res_y
+        else:
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, res_x, res_y, GL_RGB, GL_UNSIGNED_BYTE, img)
+        glBindTexture(GL_TEXTURE_2D, 0)
     
     def show_gui(self, draw_list: imgui.ImDrawList=None):
         res_x = self._color_texture.res_x
