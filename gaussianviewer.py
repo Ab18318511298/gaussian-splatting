@@ -16,8 +16,8 @@ class Dummy(object):
 class GaussianViewer(Viewer):
     def __init__(self, mode: ViewerMode):
         super().__init__(mode)
+        self.window_title = "Gaussian Viewer"
         self.gaussian_lock = Lock()
-
 
     def import_server_modules(self):
         global torch
