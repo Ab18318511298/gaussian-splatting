@@ -105,7 +105,7 @@ class NumpyImage(Image):
         if img.dtype != np.uint8:
             img = (np.clip(img, 0, 1) * 255).astype(np.uint8)
         self.step_called = False
-        return memoryview(np.ascontiguousarray(img)), {"shape": tuple(img.shape)}
+        return memoryview(np.ascontiguousarray(img.flatten())), {"shape": tuple(img.shape)}
     
     def client_recv(self, binary, text):
         self.img = np.frombuffer(binary, dtype=np.uint8).reshape(text["shape"])
@@ -180,7 +180,7 @@ if enable_torch_image:
             if img.dtype != torch.uint8:
                 img = (torch.clip(img, 0, 1) * 255).byte()
             self.step_called = False
-            return memoryview(img.contiguous().cpu().numpy()), {"shape": tuple(img.shape)}
+            return memoryview(img.contiguous().flatten().cpu().numpy()), {"shape": tuple(img.shape)}
 
         def client_recv(self, binary, text):
             img = np.frombuffer(binary, dtype=np.uint8).reshape(text["shape"])

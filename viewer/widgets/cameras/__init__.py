@@ -84,7 +84,6 @@ class Camera(Widget):
 
     @property
     def to_camera(self) -> np.ndarray:
-        print(self.to_world)
         return np.linalg.inv(self.to_world)
     
     @property

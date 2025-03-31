@@ -134,25 +134,15 @@ class Viewer(ABC):
             all_binaries.append(binary)
             binary_to_widget.append("viewer")
         
-        t0 = time.time()
         # Send metadata
         websocket.send(json.dumps(metadata), text=True)
-        t1 = time.time()
 
         # Send binary mapping
         websocket.send(json.dumps(binary_to_widget), text=True)
-        t2 = time.time()
 
         # Send binaries
         for binary in all_binaries:
             websocket.send(binary, text=False)
-        t3 = time.time()
-
-        print("Start")
-        print(t1 - t0)
-        print(t2 - t1)
-        print(t3 - t2)
-        print("End")
 
     def _server_recv(self, websocket: ServerConnection):
         """
@@ -199,7 +189,7 @@ class Viewer(ABC):
             # Try to connect to the server
             if self.websocket is None:
                 try:
-                    self.websocket = connect(f"ws://{ip}:{port}", max_size=None)
+                    self.websocket = connect(f"ws://{ip}:{port}", max_size=None, compression=None)
                     print("INFO: Connected to server.")
                 except Exception as e:
                     print(f"INFO: Failed to connect to server with error: {e}."
@@ -318,7 +308,7 @@ class Viewer(ABC):
             glfw.make_context_current(None)
 
             # Start server
-            with serve(self._server_loop, ip, port, max_size=None) as server:
+            with serve(self._server_loop, ip, port, max_size=None, compression=None) as server:
                 server_thread = threading.Thread(target=server.serve_forever)
                 server_thread.start()
                 while True:
@@ -336,7 +326,6 @@ class Viewer(ABC):
 
     def step(self):
         """ Your application logic goes here. """
-        # TODO: Image calculation stuff here
         pass
 
     def create_widgets(self):
