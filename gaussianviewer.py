@@ -2,13 +2,12 @@ import os
 from OpenGL.GL import *
 from threading import Lock
 from argparse import ArgumentParser
-from imgui_bundle import imgui_ctx, imgui
-from viewer import Viewer
-from viewer.types import ViewerMode
-from viewer.widgets.image import TorchImage
-from viewer.widgets.cameras.fps import FPSCamera
-from viewer.widgets.monitor import PerformanceMonitor
-from viewer.widgets.ellipsoid_viewer import EllipsoidViewer
+from graphdecoviewer import Viewer
+from graphdecoviewer.types import ViewerMode
+from graphdecoviewer.widgets.image import TorchImage
+from graphdecoviewer.widgets.cameras.fps import FPSCamera
+from graphdecoviewer.widgets.monitor import PerformanceMonitor
+from graphdecoviewer.widgets.opengl.ellipsoid_viewer import EllipsoidViewer
 
 class Dummy(object):
     pass
@@ -34,6 +33,12 @@ class GaussianViewer(Viewer):
 
         global render
         from gaussian_renderer import render
+
+    def import_client_modules(self):
+        super().import_client_modules()
+
+        global imgui_ctx, imgui
+        from imgui_bundle import imgui_ctx, imgui
 
     @classmethod
     def from_ply(cls, model_path, iter, mode: ViewerMode):
@@ -69,7 +74,7 @@ class GaussianViewer(Viewer):
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
         viewer.background = background
         return viewer
-    
+
     @classmethod
     def from_gaussians(cls, dataset, pipe, gaussians, separate_sh, mode: ViewerMode):
         viewer = cls(mode)
@@ -107,7 +112,7 @@ class GaussianViewer(Viewer):
                 self.gaussians.get_opacity.detach().cpu().numpy(),
                 self.gaussians.get_features_dc.detach().cpu().numpy()
             )
-        
+
         if self.render_mode == 0:
             start = torch.cuda.Event(enable_timing=True)
             end = torch.cuda.Event(enable_timing=True)
@@ -125,7 +130,7 @@ class GaussianViewer(Viewer):
             render_time = glGetQueryObjectuiv(self.ellipsoid_viewer.query, GL_QUERY_RESULT) / 1e6
 
         self.monitor.step([render_time])
-    
+
     def show_gui(self):
         with imgui_ctx.begin(f"Point View Settings"):
             _, self.render_mode = imgui.list_box("Render Mode", self.render_mode, self.render_modes)
@@ -135,7 +140,7 @@ class GaussianViewer(Viewer):
                 _, self.scaling_modifier = imgui.drag_float("Scaling Factor", self.scaling_modifier, v_min=0, v_max=10, v_speed=0.01)
             if self.render_mode == 1:
                 _, self.ellipsoid_viewer.scaling_modifier = imgui.drag_float("Scaling Factor", self.ellipsoid_viewer.scaling_modifier, v_min=0, v_max=10, v_speed=0.01)
-                
+
                 _, self.ellipsoid_viewer.render_floaters = imgui.checkbox("Render Floaters", self.ellipsoid_viewer.render_floaters)
                 _, self.ellipsoid_viewer.limit = imgui.drag_float("Alpha Threshold", self.ellipsoid_viewer.limit, v_min=0, v_max=1, v_speed=0.01)
 
@@ -150,23 +155,23 @@ class GaussianViewer(Viewer):
 
             if imgui.is_item_hovered():
                 self.camera.process_mouse_input()
-            
+
             if imgui.is_item_focused() or imgui.is_item_hovered():
                 self.camera.process_keyboard_input()
-        
+
         with imgui_ctx.begin("Performance"):
             self.monitor.show_gui()
-    
+
     def client_send(self):
         return None, {
             "scaling_modifier": self.scaling_modifier,
             "render_mode": self.render_mode
         }
-    
+
     def server_recv(self, _, text):
         self.scaling_modifier = text["scaling_modifier"]
         self.render_mode = text["render_mode"]
-    
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     subparsers = parser.add_subparsers(title="mode", dest="mode", required=True)
