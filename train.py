@@ -17,11 +17,12 @@ from gaussian_renderer import render, network_gui # 核心渲染器和GUI
 import sys
 from scene import Scene, GaussianModel # 场景管理和高斯模型
 from utils.general_utils import safe_state, get_expon_lr_func # 工具函数
-import uuid
+import uuid # 用来生成唯一标识符（UUID）
 from tqdm import tqdm # 进度条
 from utils.image_utils import psnr # PSNR图像质量评估
 from argparse import ArgumentParser, Namespace # 命令行参数解析
 from arguments import ModelParams, PipelineParams, OptimizationParams # 参数配置类
+# 尝试导入TensorBoard，用于训练可视化
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
