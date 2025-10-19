@@ -146,24 +146,38 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             pipe.debug = True
         
         # 开始前向渲染
+        #根据设置决定是“每次随机生成一个RGB值作背景”还是“使用固定的背景张量”。
         bg = torch.rand((3), device="cuda") if opt.random_background else background
-
+        
+        """
+        核心渲染语句。
+        其中参数use_trained_exp：是否使用训练集曝光参数；separate_sh：是否独立处理球谐系数
+        输出结果render_pkg是一个字典：
+        {
+          "render": image,                  # 渲染得到的RGB图像
+          "viewspace_points": tensor,       # 点云在当前视角下的投影坐标
+          "visibility_filter": mask,        # 哪些高斯被看到
+          "radii": tensor                   # 每个高斯在屏幕上的半径
+        }
+        """
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=dataset.train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
-        if viewpoint_cam.alpha_mask is not None:
+        # α_mask是个与三通道image同大小的二维矩阵，存储每个像素的α值（0 ~ 1）
+        # image.shape = （3，H，W）；alpha_mask.shape = （H，W）
+        if viewpoint_cam.alpha_mask is not None: 
             alpha_mask = viewpoint_cam.alpha_mask.cuda()
-            image *= alpha_mask
+            image *= alpha_mask # image每个通道均与α_mask做“逐元素相乘”，从而使“无效像素”的RGB值清零，达到屏蔽效果。
 
         # Loss
-        gt_image = viewpoint_cam.original_image.cuda()
-        Ll1 = l1_loss(image, gt_image)
-        if FUSED_SSIM_AVAILABLE:
+        gt_image = viewpoint_cam.original_image.cuda() # 获取真实图像
+        Ll1 = l1_loss(image, gt_image) #L1损失
+        if FUSED_SSIM_AVAILABLE: # SSIM损失（优化版或普通版）
             ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
         else:
             ssim_value = ssim(image, gt_image)
 
-        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
+        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value) # 定义损失函数，其中超参数opt.lambda_dssim被设为0.2
 
         # Depth regularization
         Ll1depth_pure = 0.0
