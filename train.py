@@ -11,17 +11,17 @@
 
 import os
 import torch
-from random import randint
+from random import randint # randint返回指定范围内的一个随机整数
 from utils.loss_utils import l1_loss, ssim # 损失函数L1和L_SSIM
 from gaussian_renderer import render, network_gui # 核心渲染器和GUI
 import sys
-from scene import Scene, GaussianModel
-from utils.general_utils import safe_state, get_expon_lr_func
+from scene import Scene, GaussianModel # 场景管理和高斯模型
+from utils.general_utils import safe_state, get_expon_lr_func # 工具函数
 import uuid
-from tqdm import tqdm
-from utils.image_utils import psnr
-from argparse import ArgumentParser, Namespace
-from arguments import ModelParams, PipelineParams, OptimizationParams
+from tqdm import tqdm # 进度条
+from utils.image_utils import psnr # PSNR图像质量评估
+from argparse import ArgumentParser, Namespace # 命令行参数解析
+from arguments import ModelParams, PipelineParams, OptimizationParams # 参数配置类
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
