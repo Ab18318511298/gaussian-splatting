@@ -142,7 +142,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         viewpoint_cam = viewpoint_stack.pop(rand_idx) # 从viewpoint_stack取出视角对象后，会删除该元素。
         vind = viewpoint_indices.pop(rand_idx) # 从viewpoint_indices中找到对应索引，然后删除索引号。
 
-        if (iteration - 1) == debug_from: # 如果达到调试起点，则启动调试模式
+        if (iteration - 1) == debug_from: # 如果达到调试起点，则启动调试模式。如果在某阶段出现异常，便不用从头训练排查。
             pipe.debug = True
         
         # Render
