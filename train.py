@@ -47,8 +47,8 @@ except:
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
      """
     - dataset: 数据集配置
-    - opt: 优化参数  
-    - pipe: 渲染管线参数
+    - opt: 包含所有训练优化器相关的超参数，由arguments/__init__.py里的 class OptimizationParams定义。 
+    - pipe: 渲染管线参数：在python还是在CUDA转换球谐系数、在python还是在CUDA计算协方差阵、是否启动调试？
     - testing_iterations: 测试迭代点列表
     - saving_iterations: 保存迭代点列表
     - checkpoint_iterations: 检查点迭代点列表
@@ -56,14 +56,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     - debug_from: 从哪个迭代开始调试
     """
     
+    # 检查稀疏Adam优化器是否可用
     if not SPARSE_ADAM_AVAILABLE and opt.optimizer_type == "sparse_adam":
         sys.exit(f"Trying to use sparse adam but it is not installed, please install the correct rasterizer using pip install [3dgs_accel].")
 
-    first_iter = 0
-    tb_writer = prepare_output_and_logger(dataset)
-    gaussians = GaussianModel(dataset.sh_degree, opt.optimizer_type)
-    scene = Scene(dataset, gaussians)
-    gaussians.training_setup(opt)
+    first_iter = 0 # 起始迭代次数
+    tb_writer = prepare_output_and_logger(dataset) # 初始化输出目录和日志记录器，返回一个SummaryWritter实例
+    gaussians = GaussianModel(dataset.sh_degree, opt.optimizer_type) # 初始化高斯模型，后者规定优化器类型为'Adam'
+    scene = Scene(dataset, gaussians) # 初始化场景，加载数据集和对应的相机参数
+    gaussians.training_setup(opt) #设置训练参数（优化器、各种学习率等）
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
         gaussians.restore(model_params, opt)
