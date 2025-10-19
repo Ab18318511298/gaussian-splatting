@@ -78,17 +78,25 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     iter_start = torch.cuda.Event(enable_timing = True)
     iter_end = torch.cuda.Event(enable_timing = True)
 
+    # 是否使用稀疏Adam优化器
     use_sparse_adam = opt.optimizer_type == "sparse_adam" and SPARSE_ADAM_AVAILABLE 
+
+    # 创建一个exponential函数，返回深度L1损失的权重。参数有初始权重、最终权重、总训练步数
     depth_l1_weight = get_expon_lr_func(opt.depth_l1_weight_init, opt.depth_l1_weight_final, max_steps=opt.iterations)
 
-    viewpoint_stack = scene.getTrainCameras().copy()
-    viewpoint_indices = list(range(len(viewpoint_stack)))
-    ema_loss_for_log = 0.0
-    ema_Ll1depth_for_log = 0.0
+    viewpoint_stack = scene.getTrainCameras().copy() # 获取所有训练相机对象（包括内参、外参、RGB、深度图等）
+    viewpoint_indices = list(range(len(viewpoint_stack))) # 给每个训练相机分配一个索引编号，从0到N-1（假设有N个训练视角）
+    ema_loss_for_log = 0.0 # 初始化指数移动平均损失=0，用于日志记录
+    ema_Ll1depth_for_log = 0.0 # 初始化指数移动平均深度损失=0
 
+    # 使用tqdm库创建进度条，实时追踪训练进度、耗时、速率。range为训练范围，desc为进度条描述文字。
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress")
-    first_iter += 1
+    
+    first_iter += 1 # 当first_iter = 5000, 之后要从checkpoint恢复训练，就会从5001次开始，避免重复执行第5000次。
+
+    # 主训练循环
     for iteration in range(first_iter, opt.iterations + 1):
+        # 迭代训练前调试GUI
         if network_gui.conn == None:
             network_gui.try_connect()
         while network_gui.conn != None:
@@ -103,8 +111,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     break
             except Exception as e:
                 network_gui.conn = None
-
-        iter_start.record()
+        
+        iter_start.record() # GPU计时开始
 
         gaussians.update_learning_rate(iteration)
 
