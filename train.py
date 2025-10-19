@@ -12,8 +12,8 @@
 import os
 import torch
 from random import randint
-from utils.loss_utils import l1_loss, ssim
-from gaussian_renderer import render, network_gui
+from utils.loss_utils import l1_loss, ssim # 损失函数L1和L_SSIM
+from gaussian_renderer import render, network_gui # 核心渲染器和GUI
 import sys
 from scene import Scene, GaussianModel
 from utils.general_utils import safe_state, get_expon_lr_func
