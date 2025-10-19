@@ -64,14 +64,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     tb_writer = prepare_output_and_logger(dataset) # 初始化输出目录和日志记录器，返回一个SummaryWritter实例
     gaussians = GaussianModel(dataset.sh_degree, opt.optimizer_type) # 初始化高斯模型，后者规定优化器类型为'Adam'
     scene = Scene(dataset, gaussians) # 初始化场景，加载数据集和对应的相机参数
-    gaussians.training_setup(opt) #设置训练参数（优化器、各种学习率等）
-    if checkpoint:
+    gaussians.training_setup(opt) #根据传入的 opt 参数，设置训练参数（优化器、各种学习率等）。该函数在scene/gaussian_model.py里定义
+    
+    if checkpoint: # 如果提供了checkpoint，则从checkpoint加载模型参数并恢复训练进度
         (model_params, first_iter) = torch.load(checkpoint)
         gaussians.restore(model_params, opt)
 
-    bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
-    background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+    bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0] # 设置背景颜色，白色或黑色取决于数据集要求
+    background = torch.tensor(bg_color, dtype=torch.float32, device="cuda") # 把背景颜色转换为 GPU 上的 float32 张量，以便在渲染或损失计算时作为背景色使用
 
+    # 创建CUDA事件用于对GPU计时
+    # 使用方法：iter_start.record()、iter_end.record()、iter_start.elapsed_time(iter_end)
     iter_start = torch.cuda.Event(enable_timing = True)
     iter_end = torch.cuda.Event(enable_timing = True)
 
