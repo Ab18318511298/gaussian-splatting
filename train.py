@@ -22,19 +22,22 @@ from tqdm import tqdm # 进度条
 from utils.image_utils import psnr # PSNR图像质量评估
 from argparse import ArgumentParser, Namespace # 命令行参数解析
 from arguments import ModelParams, PipelineParams, OptimizationParams # 参数配置类
-# 尝试导入TensorBoard，用于训练可视化
+
+# 尝试导入SummaryWritter，用于记录训练数据，方便tensorboard进行可视化
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
 except ImportError:
     TENSORBOARD_FOUND = False
 
+# 尝试导入优化后的SSIM（效果与SSIM一样，但计算效率更快）实现
 try:
     from fused_ssim import fused_ssim
     FUSED_SSIM_AVAILABLE = True
 except:
     FUSED_SSIM_AVAILABLE = False
 
+# 尝试导入稀疏Adam优化器
 try:
     from diff_gaussian_rasterization import SparseGaussianAdam
     SPARSE_ADAM_AVAILABLE = True
@@ -42,7 +45,17 @@ except:
     SPARSE_ADAM_AVAILABLE = False
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
-
+     """
+    - dataset: 数据集配置
+    - opt: 优化参数  
+    - pipe: 渲染管线参数
+    - testing_iterations: 测试迭代点列表
+    - saving_iterations: 保存迭代点列表
+    - checkpoint_iterations: 检查点迭代点列表
+    - checkpoint: 预训练检查点路径
+    - debug_from: 从哪个迭代开始调试
+    """
+    
     if not SPARSE_ADAM_AVAILABLE and opt.optimizer_type == "sparse_adam":
         sys.exit(f"Trying to use sparse adam but it is not installed, please install the correct rasterizer using pip install [3dgs_accel].")
 
