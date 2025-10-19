@@ -96,42 +96,56 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
     # 主训练循环
     for iteration in range(first_iter, opt.iterations + 1):
-        # 迭代训练前调试GUI
+        
+        # 迭代训练前，建立实时的可视化GUI。
+        """
+        - custom_cam：用户当前在 GUI 中的指定相机视角参数
+        - do_training：是否开始/继续训练（GUI按钮控制）
+        - pipe.convert_SHs_python：是否在 Python 端处理球谐转换（调试参数）
+        - pipe.compute_cov3D_python：是否在 Python 端计算协方差矩阵（调试参数）
+        - keep_alive：GUI是否保持连接
+        - scaling_modifier：调整高斯点尺寸缩放的参数
+        """
         if network_gui.conn == None:
-            network_gui.try_connect()
+            network_gui.try_connect() # 尝试建立socket通信以连接训练。
         while network_gui.conn != None:
             try:
                 net_image_bytes = None
+                # 接收GUI通过network_gui.receive()发送的消息
                 custom_cam, do_training, pipe.convert_SHs_python, pipe.compute_cov3D_python, keep_alive, scaling_modifer = network_gui.receive()
                 if custom_cam != None:
+                    # 调用render()渲染用gaussians在用户指定的custom_cam下渲染一帧图像
                     net_image = render(custom_cam, gaussians, pipe, background, scaling_modifier=scaling_modifer, use_trained_exp=dataset.train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)["render"]
+                    # 将渲染结果转为 8-bit RGB 数组（0–255），再转为字节流，准备发给 GUI。
                     net_image_bytes = memoryview((torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy())
+                # 把渲染结果（图片）发送回 GUI 客户端显示，即可实时预览画面。
                 network_gui.send(net_image_bytes, dataset.source_path)
+                # 接下来判断要“开始训练”还是继续“预览画面”。如果按下“开始训练”并且（“迭代还没结束”或不要求连接GUI），就“跳出循环”。
                 if do_training and ((iteration < int(opt.iterations)) or not keep_alive):
                     break
-            except Exception as e:
+            except Exception as e: # 异常捕获，防止GUI出问题时妨碍迭代训练。
                 network_gui.conn = None
         
         iter_start.record() # GPU计时开始
 
-        gaussians.update_learning_rate(iteration)
+        gaussians.update_learning_rate(iteration) # 根据当前迭代次数，更新学习率（位置p、SH系数、协方差Σ、不透明度α），位置p使用指数衰减调度
 
-        # Every 1000 its we increase the levels of SH up to a maximum degree
+        # 为了避免基色错误，从零阶开始，每1000次迭代，提升SH系数的阶数直到三阶。
         if iteration % 1000 == 0:
             gaussians.oneupSHdegree()
 
-        # Pick a random Camera
-        if not viewpoint_stack:
-            viewpoint_stack = scene.getTrainCameras().copy()
-            viewpoint_indices = list(range(len(viewpoint_stack)))
-        rand_idx = randint(0, len(viewpoint_indices) - 1)
-        viewpoint_cam = viewpoint_stack.pop(rand_idx)
-        vind = viewpoint_indices.pop(rand_idx)
+        # 从“训练集”中随机选择一个视角来训练渲染，并保证epoch内一个视角只出现一次。
+        if not viewpoint_stack: # 本轮次视角用完后
+            viewpoint_stack = scene.getTrainCameras().copy() # copy一轮新的视角
+            viewpoint_indices = list(range(len(viewpoint_stack))) # 同前，创建索引列表
+        rand_idx = randint(0, len(viewpoint_indices) - 1) # 从本轮次剩余视角中随机选择一个
+        viewpoint_cam = viewpoint_stack.pop(rand_idx) # 从viewpoint_stack取出视角对象后，会删除该元素。
+        vind = viewpoint_indices.pop(rand_idx) # 从viewpoint_indices中找到对应索引，然后删除索引号。
 
-        # Render
-        if (iteration - 1) == debug_from:
+        if (iteration - 1) == debug_from: # 如果达到调试起点，则启动调试模式
             pipe.debug = True
-
+        
+        # Render
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=dataset.train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
