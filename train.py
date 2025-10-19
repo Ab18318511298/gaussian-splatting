@@ -145,7 +145,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         if (iteration - 1) == debug_from: # 如果达到调试起点，则启动调试模式。如果在某阶段出现异常，便不用从头训练排查。
             pipe.debug = True
         
-        # Render
+        # 开始前向渲染
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=dataset.train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
