@@ -199,16 +199,18 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         iter_end.record() # 迭代计时结束
 
-        with torch.no_grad():
+        with torch.no_grad(): # 局部禁用梯度计算
             # Progress bar
-            ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log
+            # 使用滑动平均（EMA），考虑当前loss/Ll1depth与历史平滑值，降低短期波动影响。
+            ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log # loss.item()将loss张量转换为数字
             ema_Ll1depth_for_log = 0.4 * Ll1depth + 0.6 * ema_Ll1depth_for_log
 
-            if iteration % 10 == 0:
+            if iteration % 10 == 0: # 每10次迭代更新一次tqdm进度条
+                # set_postfix：自定义进度条右边的字典信息
                 progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}", "Depth Loss": f"{ema_Ll1depth_for_log:.{7}f}"})
                 progress_bar.update(10)
             if iteration == opt.iterations:
-                progress_bar.close()
+                progress_bar.close() # 迭代完成后关闭进度条
 
             # Log and save
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp)
