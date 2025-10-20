@@ -289,27 +289,31 @@ def prepare_output_and_logger(args): # 准备输出目录和日志记录器
 
 def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, train_test_exp):
     if tb_writer:
+        # 将训练指标实时写入 TensorBoard，方便可视化 loss 曲线和训练效率。
+        # tb_writer.add_scalar：在Tensorboard中记录一个标量。
         tb_writer.add_scalar('train_loss_patches/l1_loss', Ll1.item(), iteration)
         tb_writer.add_scalar('train_loss_patches/total_loss', loss.item(), iteration)
         tb_writer.add_scalar('iter_time', elapsed, iteration)
 
     # Report test and samples of training set
     if iteration in testing_iterations:
-        torch.cuda.empty_cache()
+        torch.cuda.empty_cache() # 清空GPU缓存
+        # 构造一个包含两组配置的元组，第一组为测试集，第二组为训练集的一部分（每隔5取一次相机）
+        # getTestCameras与getTrainCameras均输出一个列表
         validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
                               {'name': 'train', 'cameras' : [scene.getTrainCameras()[idx % len(scene.getTrainCameras())] for idx in range(5, 30, 5)]})
 
-        for config in validation_configs:
+        for config in validation_configs: # 两个组都要遍历
             if config['cameras'] and len(config['cameras']) > 0:
                 l1_test = 0.0
                 psnr_test = 0.0
-                for idx, viewpoint in enumerate(config['cameras']):
-                    image = torch.clamp(renderFunc(viewpoint, scene.gaussians, *renderArgs)["render"], 0.0, 1.0)
-                    gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0)
-                    if train_test_exp:
-                        image = image[..., image.shape[-1] // 2:]
-                        gt_image = gt_image[..., gt_image.shape[-1] // 2:]
-                    if tb_writer and (idx < 5):
+                for idx, viewpoint in enumerate(config['cameras']): # 遍历组内所有摄像机视角
+                    image = torch.clamp(renderFunc(viewpoint, scene.gaussians, *renderArgs)["render"], 0.0, 1.0) # 渲染图像
+                    gt_image = torch.clamp(viewpoint.original_image.to("cuda"), 0.0, 1.0) # 取出真实图像
+                    if train_test_exp: # 判断是否为train/test对比实验
+                        image = image[..., image.shape[-1] // 2:] # 保留右半部分图像
+                        gt_image = gt_image[..., gt_image.shape[-1] // 2:] # 保留右半部分图像
+                    if tb_writer and (idx < 5): # 仅对前5个视角的渲染结果可视化到Tensorboard
                         tb_writer.add_images(config['name'] + "_view_{}/render".format(viewpoint.image_name), image[None], global_step=iteration)
                         if iteration == testing_iterations[0]:
                             tb_writer.add_images(config['name'] + "_view_{}/ground_truth".format(viewpoint.image_name), gt_image[None], global_step=iteration)
@@ -319,20 +323,28 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                 l1_test /= len(config['cameras'])          
                 print("\n[ITER {}] Evaluating {}: L1 {} PSNR {}".format(iteration, config['name'], l1_test, psnr_test))
                 if tb_writer:
+                    # 把验证结果写入 TensorBoard 以绘制随迭代变化的指标曲线。
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - l1_loss', l1_test, iteration)
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - psnr', psnr_test, iteration)
 
+        # 记录场景统计信息
         if tb_writer:
+            # 把当前场景中高斯点的不透明度α分布记录成直方图
             tb_writer.add_histogram("scene/opacity_histogram", scene.gaussians.get_opacity, iteration)
+            # 把高斯点的总数记录为一个标量
             tb_writer.add_scalar('total_points', scene.gaussians.get_xyz.shape[0], iteration)
-        torch.cuda.empty_cache()
+        torch.cuda.empty_cache() # 再次清空显存
 
+# 主程序入口
 if __name__ == "__main__":
-    # Set up command line argument parser
-    parser = ArgumentParser(description="Training script parameters")
+    parser = ArgumentParser(description="Training script parameters") # 创建命令行参数解析器
+
+    # 加载参数组
     lp = ModelParams(parser)
     op = OptimizationParams(parser)
     pp = PipelineParams(parser)
+
+    # 添加各种控制参数
     parser.add_argument('--ip', type=str, default="127.0.0.1")
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
@@ -344,7 +356,7 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
     args = parser.parse_args(sys.argv[1:])
-    args.save_iterations.append(args.iterations)
+    args.save_iterations.append(args.iterations) # 训练结束的迭代点也要放进save_iterations
     
     print("Optimizing " + args.model_path)
 
