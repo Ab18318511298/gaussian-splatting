@@ -208,7 +208,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if iteration % 10 == 0: # 每10次迭代更新一次tqdm进度条
                 # set_postfix：自定义进度条右边的字典信息
                 progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}", "Depth Loss": f"{ema_Ll1depth_for_log:.{7}f}"})
-                progress_bar.update(10)
+                progress_bar.update(10) # 手动控制进度条更新次数，百分比由tqdm（）函数定义时提供的总迭代次数算出。
             if iteration == opt.iterations:
                 progress_bar.close() # 迭代完成后关闭进度条
 
