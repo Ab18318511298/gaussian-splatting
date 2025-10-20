@@ -155,6 +155,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         输出结果render_pkg是一个字典：
         {
           "render": image,                  # 渲染得到的RGB图像
+          "depth": invDepth,                # 逆深度图 
           "viewspace_points": tensor,       # 点云在当前视角下的投影坐标
           "visibility_filter": mask,        # 哪些高斯被看到
           "radii": tensor                   # 每个高斯在屏幕上的半径
@@ -182,20 +183,21 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # Depth regularization
         Ll1depth_pure = 0.0
         if depth_l1_weight(iteration) > 0 and viewpoint_cam.depth_reliable:
-            invDepth = render_pkg["depth"]
-            mono_invdepth = viewpoint_cam.invdepthmap.cuda()
-            depth_mask = viewpoint_cam.depth_mask.cuda()
+            invDepth = render_pkg["depth"] # 取出渲染得到的逆深度图
+            mono_invdepth = viewpoint_cam.invdepthmap.cuda() # 取出真实的逆深度图
+            depth_mask = viewpoint_cam.depth_mask.cuda() # 0/1掩码图，存储每个像素的，同α_mask，用于在损失计算中使“无效像素”的逆深度值清零
 
+            # 纯粹的深度L1损失：逆深度误差乘深度掩码，再求平均
             Ll1depth_pure = torch.abs((invDepth  - mono_invdepth) * depth_mask).mean()
-            Ll1depth = depth_l1_weight(iteration) * Ll1depth_pure 
+            Ll1depth = depth_l1_weight(iteration) * Ll1depth_pure # 乘以动态权重因子，该因子随指数衰减。
             loss += Ll1depth
             Ll1depth = Ll1depth.item()
         else:
             Ll1depth = 0
 
-        loss.backward()
+        loss.backward() # 反向传播追踪计算图，逐层计算loss函数对高斯参数的梯度，并将结果存入参数的.grad字段（优化后会删除）
 
-        iter_end.record()
+        iter_end.record() # 迭代计时结束
 
         with torch.no_grad():
             # Progress bar
