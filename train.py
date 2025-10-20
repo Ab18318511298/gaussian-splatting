@@ -212,43 +212,60 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if iteration == opt.iterations:
                 progress_bar.close() # 迭代完成后关闭进度条
 
-            # Log and save
+            """
+            记录训练指标与渲染效果到Tensorboard。
+            - iter_start.elapsed_time(iter_end)：当前迭代耗时
+            - 1.：缩放系数
+            - None：占位参数
+            """
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background, 1., SPARSE_ADAM_AVAILABLE, None, dataset.train_test_exp), dataset.train_test_exp)
-            if (iteration in saving_iterations):
+            
+            if (iteration in saving_iterations): # 若当前迭代数在保存迭代点表内
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
-                scene.save(iteration)
+                scene.save(iteration) # 保存当前高斯参数于文件
 
             # Densification
-            if iteration < opt.densify_until_iter:
+            if iteration < opt.densify_until_iter: # 设置densification阈值，指定迭代区间，只有在区间内会进行“增密”操作
                 # Keep track of max radii in image-space for pruning
                 gaussians.max_radii2D[visibility_filter] = torch.max(gaussians.max_radii2D[visibility_filter], radii[visibility_filter])
+                # 收集所有可见高斯的梯度信息，记录“误差贡献”
                 gaussians.add_densification_stats(viewspace_point_tensor, visibility_filter)
-
-                if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
-                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None
-                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold, radii)
                 
+                # 若处于迭代区间内，且处于“密度控制”步，则开始增密。论文设置间隔为100。
+                if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0: 
+                    """
+                    - size_threshold：对大高斯的体积限制
+                    - opt.densify_grad_threshold：克隆阈值，大于该阈值则克隆新高斯。
+                    - 0.005：剪枝阈值，不透明度小于0.005则删除该高斯
+                    - scene.cameras_extent：场景相机范围，用于坐标归一化
+                    - radii：屏幕投影半径
+                    """
+                    size_threshold = 20 if iteration > opt.opacity_reset_interval else None 
+                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold, radii)
+
+                # opt.opacity_reset_interval为“重置阈值”，达到该阈值则重置所有高斯的不透明度α。论文中将该阈值设为3000次。
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
 
             # Optimizer step
             if iteration < opt.iterations:
-                gaussians.exposure_optimizer.step()
+                gaussians.exposure_optimizer.step() # 训练相机曝光参数
                 gaussians.exposure_optimizer.zero_grad(set_to_none = True)
-                if use_sparse_adam:
+                if use_sparse_adam: # 相比于普通的Adam，SparseAdam只会优化在当前视角内可见的高斯的参数
                     visible = radii > 0
                     gaussians.optimizer.step(visible, radii.shape[0])
                     gaussians.optimizer.zero_grad(set_to_none = True)
                 else:
-                    gaussians.optimizer.step()
-                    gaussians.optimizer.zero_grad(set_to_none = True)
+                    gaussians.optimizer.step() # 对高斯参数进行优化
+                    gaussians.optimizer.zero_grad(set_to_none = True) # 清除原有参数，将梯度设置为None
 
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
+                # gaussians.capture()：提取当前高斯的所有参数
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
 
-def prepare_output_and_logger(args):    
-    if not args.model_path:
+def prepare_output_and_logger(args): # 准备输出目录和日志记录器   
+    if not args.model_path: # 若没有指定model_path，就生成一个唯一的输出目录
         if os.getenv('OAR_JOB_ID'):
             unique_str=os.getenv('OAR_JOB_ID')
         else:
@@ -257,7 +274,7 @@ def prepare_output_and_logger(args):
         
     # Set up output folder
     print("Output folder: {}".format(args.model_path))
-    os.makedirs(args.model_path, exist_ok = True)
+    os.makedirs(args.model_path, exist_ok = True) # 创建目录args.model_path。exist_ok = True：即使目录已存在，也不会抛出异常
     with open(os.path.join(args.model_path, "cfg_args"), 'w') as cfg_log_f:
         cfg_log_f.write(str(Namespace(**vars(args))))
 
