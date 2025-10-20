@@ -275,16 +275,17 @@ def prepare_output_and_logger(args): # 准备输出目录和日志记录器
     # Set up output folder
     print("Output folder: {}".format(args.model_path))
     os.makedirs(args.model_path, exist_ok = True) # 创建目录args.model_path。exist_ok = True：即使目录已存在，也不会抛出异常
+    # 在输出目录下创建名为 cfg_args 的文件，用于保存当前运行时的参数配置，特别是便于查看超参数设置。
     with open(os.path.join(args.model_path, "cfg_args"), 'w') as cfg_log_f:
         cfg_log_f.write(str(Namespace(**vars(args))))
 
     # Create Tensorboard writer
-    tb_writer = None
+    tb_writer = None # 初始化tb_writer
     if TENSORBOARD_FOUND:
-        tb_writer = SummaryWriter(args.model_path)
+        tb_writer = SummaryWriter(args.model_path) # 创建一个 TensorBoard 日志写入器
     else:
         print("Tensorboard not available: not logging progress")
-    return tb_writer
+    return tb_writer # 若Tensorboard可用，返回的就是一个SummaryWriter对象，否则是None
 
 def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_iterations, scene : Scene, renderFunc, renderArgs, train_test_exp):
     if tb_writer:
