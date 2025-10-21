@@ -16,7 +16,15 @@ from utils.graphics_utils import getWorld2View2, getProjectionMatrix
 from utils.general_utils import PILtoTorch
 import cv2
 
+# Camera类：把 COLMAP（或 Blender）导出的相机信息、图像、深度图等内容封装成可供 GPU 计算的结构。
 class Camera(nn.Module):
+    """
+    - resolution：图像分辨率
+    - FoVx, FoVy：水平、垂直视场角（Field of View）
+    - depth_params：深度图的缩放、偏移参数
+    - trans, scale：用于坐标归一化变换
+    - data_device：数据加载到的GPU设备名
+    """
     def __init__(self, resolution, colmap_id, R, T, FoVx, FoVy, depth_params, image, invdepthmap,
                  image_name, uid,
                  trans=np.array([0.0, 0.0, 0.0]), scale=1.0, data_device = "cuda",
