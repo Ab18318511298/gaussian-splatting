@@ -29,7 +29,8 @@ class Scene:
     # 初始化场景对象的函数
     def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0]):
         """b
-        :param path: Path to colmap scene main folder.
+        - param path: Path to colmap scene main folder.
+        - args：自定义类型
         """
         self.model_path = args.model_path
         self.loaded_iter = None
