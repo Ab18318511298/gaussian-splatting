@@ -106,19 +106,23 @@ class Scene:
             # 创建新高斯点云
             self.gaussians.create_from_pcd(scene_info.point_cloud, scene_info.train_cameras, self.cameras_extent)
 
-    def save(self, iteration):
+    def save(self, iteration): # 保存当前训练迭代的模型状态
+        # 为每个iteration构造输出目录，方便保存到一个独立文件夹
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))
+        # 把当前点云的所有高斯参数导出为.ply格式
         self.gaussians.save_ply(os.path.join(point_cloud_path, "point_cloud.ply"))
+        # 保存每个图片的曝光参数。因为gaussians.exposure_mapping是个字典，每个图片名对应一个曝光参数，因此需要先取出image_name
         exposure_dict = {
             image_name: self.gaussians.get_exposure_from_name(image_name).detach().cpu().numpy().tolist()
             for image_name in self.gaussians.exposure_mapping
         }
 
+        # 将曝光参数字典写入json文件
         with open(os.path.join(self.model_path, "exposure.json"), "w") as f:
             json.dump(exposure_dict, f, indent=2)
 
     def getTrainCameras(self, scale=1.0):
-        return self.train_cameras[scale]
+        return self.train_cameras[scale] # 上面依照分辨率创建的self.train_cameras[resolution_scale]字典
 
     def getTestCameras(self, scale=1.0):
         return self.test_cameras[scale]
