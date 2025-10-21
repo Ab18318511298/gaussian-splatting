@@ -17,11 +17,16 @@ from scene.dataset_readers import sceneLoadTypeCallbacks
 from scene.gaussian_model import GaussianModel
 from arguments import ModelParams
 from utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
-
+    
+    """
+    Scene 类用于管理场景的3D模型，包括相机参数、点云数据和高斯模型的初始化和加载
+    """
 class Scene:
+    
+    # 创建一个叫“gaussians”的成员变量，其类型是“GaussianModel”。
+    gaussians : GaussianModel 
 
-    gaussians : GaussianModel
-
+    # 初始化场景对象的函数
     def __init__(self, args : ModelParams, gaussians : GaussianModel, load_iteration=None, shuffle=True, resolution_scales=[1.0]):
         """b
         :param path: Path to colmap scene main folder.
