@@ -21,6 +21,7 @@ BaseImage = collections.namedtuple(
     "Image", ["id", "qvec", "tvec", "camera_id", "name", "xys", "point3D_ids"])
 Point3D = collections.namedtuple(
     "Point3D", ["id", "xyz", "rgb", "error", "image_ids", "point2D_idxs"])
+# 定义colmap支持的所有相机模型
 CAMERA_MODELS = {
     CameraModel(model_id=0, model_name="SIMPLE_PINHOLE", num_params=3),
     CameraModel(model_id=1, model_name="PINHOLE", num_params=4),
@@ -34,12 +35,15 @@ CAMERA_MODELS = {
     CameraModel(model_id=9, model_name="RADIAL_FISHEYE", num_params=5),
     CameraModel(model_id=10, model_name="THIN_PRISM_FISHEYE", num_params=12)
 }
+# 基于CAMERA_MODEL创建一个字典,键为model_id，便于通过id查找相机模型
 CAMERA_MODEL_IDS = dict([(camera_model.model_id, camera_model)
                          for camera_model in CAMERA_MODELS])
+# 基于CAMERA_MODEL创建一个字典,键为model_name，便于通过name查找相机模型
 CAMERA_MODEL_NAMES = dict([(camera_model.model_name, camera_model)
                            for camera_model in CAMERA_MODELS])
 
 
+# 实现四元数（w,x,y,z）到3×3旋转矩阵的转换
 def qvec2rotmat(qvec):
     return np.array([
         [1 - 2 * qvec[2]**2 - 2 * qvec[3]**2,
@@ -52,15 +56,19 @@ def qvec2rotmat(qvec):
          2 * qvec[2] * qvec[3] + 2 * qvec[0] * qvec[1],
          1 - 2 * qvec[1]**2 - 2 * qvec[2]**2]])
 
+# 对3×3旋转矩阵进行对称特征分解（必为实特征值），取最大特征值的特征向量，得到“最佳四元数”
 def rotmat2qvec(R):
-    Rxx, Ryx, Rzx, Rxy, Ryy, Rzy, Rxz, Ryz, Rzz = R.flat
+    Rxx, Ryx, Rzx, Rxy, Ryy, Rzy, Rxz, Ryz, Rzz = R.flat # 平铺旋转阵，取出9个值
     K = np.array([
         [Rxx - Ryy - Rzz, 0, 0, 0],
         [Ryx + Rxy, Ryy - Rxx - Rzz, 0, 0],
         [Rzx + Rxz, Rzy + Ryz, Rzz - Rxx - Ryy, 0],
         [Ryz - Rzy, Rzx - Rxz, Rxy - Ryx, Rxx + Ryy + Rzz]]) / 3.0
-    eigvals, eigvecs = np.linalg.eigh(K)
-    qvec = eigvecs[[3, 0, 1, 2], np.argmax(eigvals)]
+    # np.linalg.eigh()遇到非对称的矩阵，只会读取下三角，并视为对称阵。
+    eigvals, eigvecs = np.linalg.eigh(K) 
+    # 取最大特征值对应的特征向量。其中，特征分解默认[x,y,z,w]，需要改变为四元数顺序[w,x,y,z]
+    qvec = eigvecs[[3, 0, 1, 2], np.argmax(eigvals)] 
+    # 利用q与-q表示相同旋转，保证四元数符号一致性。
     if qvec[0] < 0:
         qvec *= -1
     return qvec
