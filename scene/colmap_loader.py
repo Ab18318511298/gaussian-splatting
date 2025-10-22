@@ -77,6 +77,7 @@ class Image(BaseImage):
     def qvec2rotmat(self):
         return qvec2rotmat(self.qvec)
 
+# 二进制解析原语。该函数读取文件中的二进制数据，根据提供的总字节数、格式字符串、字节序，来转换成对应数据类型。
 def read_next_bytes(fid, num_bytes, format_char_sequence, endian_character="<"):
     """Read and unpack the next bytes from a binary file.
     :param fid:
@@ -85,8 +86,8 @@ def read_next_bytes(fid, num_bytes, format_char_sequence, endian_character="<"):
     :param endian_character: Any of {@, =, <, >, !}
     :return: Tuple of read and unpacked values.
     """
-    data = fid.read(num_bytes)
-    return struct.unpack(endian_character + format_char_sequence, data)
+    data = fid.read(num_bytes) # 从当前文件指针位置开始，读取指定的字节数
+    return struct.unpack(endian_character + format_char_sequence, data) # 用struct.unpack()解码字节流
 
 def read_points3D_text(path):
     """
