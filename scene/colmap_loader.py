@@ -100,16 +100,16 @@ def read_points3D_text(path):
     rgbs = None
     errors = None
     num_points = 0
-    with open(path, "r") as fid:
+    with open(path, "r") as fid: # 先扫描一遍文件，统计点的数量num_points
         while True:
             line = fid.readline()
             if not line:
                 break
             line = line.strip()
-            if len(line) > 0 and line[0] != "#":
+            if len(line) > 0 and line[0] != "#": # 过滤空行和注释行
                 num_points += 1
 
-
+    # 初始化存储数组：预先分配好三块连续内存。
     xyzs = np.empty((num_points, 3))
     rgbs = np.empty((num_points, 3))
     errors = np.empty((num_points, 1))
@@ -121,10 +121,12 @@ def read_points3D_text(path):
                 break
             line = line.strip()
             if len(line) > 0 and line[0] != "#":
-                elems = line.split()
+                elems = line.split() # 将字符串分割成字段列表
+                # map()会对字符串数组中每一个元素调用函数，转变为浮点数。但map()返回的结果是个可迭代对象，不能直接np.array()变成numpy数组。
                 xyz = np.array(tuple(map(float, elems[1:4])))
                 rgb = np.array(tuple(map(int, elems[4:7])))
                 error = np.array(float(elems[7]))
+                #依次填入数组
                 xyzs[count] = xyz
                 rgbs[count] = rgb
                 errors[count] = error
@@ -148,6 +150,12 @@ def read_points3D_binary(path_to_model_file):
         errors = np.empty((num_points, 1))
 
         for p_id in range(num_points):
+            """
+            Q：uint64，1×8字节————point3D_id
+            ddd：double，3×8字节————xyz
+            BBB：uint8，3×1字节————rgb
+            d：double，1×8字节————error
+            """
             binary_point_line_properties = read_next_bytes(
                 fid, num_bytes=43, format_char_sequence="QdddBBBd")
             xyz = np.array(binary_point_line_properties[1:4])
