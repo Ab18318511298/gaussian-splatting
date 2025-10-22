@@ -26,29 +26,33 @@ try:
 except:
     SPARSE_ADAM_AVAILABLE = False
 
-
+# 用于渲染一组视图（training_set或testing_set）
 def render_set(model_path, name, iteration, views, gaussians, pipeline, background, train_test_exp, separate_sh):
-    render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders")
-    gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt")
+    render_path = os.path.join(model_path, name, "ours_{}".format(iteration), "renders") # 渲染结果保存路径
+    gts_path = os.path.join(model_path, name, "ours_{}".format(iteration), "gt") # 对应ground truth图像保存路径
 
+    # 创建保存结果的文件夹，exist_ok=True：若文件已存在则不报错
     makedirs(render_path, exist_ok=True)
     makedirs(gts_path, exist_ok=True)
 
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
-        rendering = render(view, gaussians, pipeline, background, use_trained_exp=train_test_exp, separate_sh=separate_sh)["render"]
-        gt = view.original_image[0:3, :, :]
+        # 返回的render是一个字典，有“render”键（对应RGB图像张量）、“depth”键（对应深度图像张量）等
+        in_test_exp, separate_sh=separate_sh)["render"]
+        gt = view.original_image[0:3, :, :]rendering = render(view, gaussians, pipeline, background, use_trained_exp=tra
 
         if args.train_test_exp:
             rendering = rendering[..., rendering.shape[-1] // 2:]
             gt = gt[..., gt.shape[-1] // 2:]
 
+        # 使用torchvision保存图像
         torchvision.utils.save_image(rendering, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
         torchvision.utils.save_image(gt, os.path.join(gts_path, '{0:05d}'.format(idx) + ".png"))
 
+# 调用render_set来渲染训练集和测试集，用参数决定是否跳过训练集/测试集渲染
 def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, separate_sh: bool):
     with torch.no_grad():
-        gaussians = GaussianModel(dataset.sh_degree)
-        scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False)
+        gaussians = GaussianModel(dataset.sh_degree) # 初始化高斯模型
+        scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False) # 创建Scene对象
 
         bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
