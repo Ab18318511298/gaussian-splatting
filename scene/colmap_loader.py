@@ -89,6 +89,7 @@ def read_next_bytes(fid, num_bytes, format_char_sequence, endian_character="<"):
     data = fid.read(num_bytes) # 从当前文件指针位置开始，读取指定的字节数
     return struct.unpack(endian_character + format_char_sequence, data) # 用struct.unpack()解码字节流
 
+# 该函数是用来从“colmap导出的稀疏点云文件points3D_text（一个列表）”中，读取每个高斯点的参数（空间坐标xyz、颜色rgb、重投影误差error等）
 def read_points3D_text(path):
     """
     see: src/base/reconstruction.cc
