@@ -105,7 +105,7 @@ def read_points3D_text(path):
             line = fid.readline()
             if not line:
                 break
-            line = line.strip()
+            line = line.strip() # 去除该行首尾空白符（包括空格、制表符、换行符等）
             if len(line) > 0 and line[0] != "#": # 过滤空行和注释行
                 num_points += 1
 
@@ -119,7 +119,7 @@ def read_points3D_text(path):
             line = fid.readline()
             if not line:
                 break
-            line = line.strip()
+            line = line.strip() # 去除该行首尾空白符（包括空格、制表符、换行符等）
             if len(line) > 0 and line[0] != "#":
                 elems = line.split() # 将字符串分割成字段列表
                 # map()会对字符串数组中每一个元素调用函数，转变为浮点数。但map()返回的结果是个可迭代对象，不能直接np.array()变成numpy数组。
@@ -185,15 +185,18 @@ def read_intrinsics_text(path):
             line = fid.readline()
             if not line:
                 break
-            line = line.strip()
+            line = line.strip() # 去除该行首尾空白符（包括空格、制表符、换行符等）
             if len(line) > 0 and line[0] != "#":
-                elems = line.split()
+                elems = line.split() # 按照空格拆分line
                 camera_id = int(elems[0])
                 model = elems[1]
+                # 训练代码目前只兼容PINHOLE相机，否则会抛出AssertionError
                 assert model == "PINHOLE", "While the loader support other types, the rest of the code assumes PINHOLE"
                 width = int(elems[2])
                 height = int(elems[3])
+                # map()把每个字符串转换成浮点数迭代器，tuple()把迭代器变成元组，np.array()把元组变成numpy数组
                 params = np.array(tuple(map(float, elems[4:])))
+                # 创建相机对象
                 cameras[camera_id] = Camera(id=camera_id, model=model,
                                             width=width, height=height,
                                             params=params)
