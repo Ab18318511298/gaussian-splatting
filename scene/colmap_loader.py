@@ -87,7 +87,7 @@ def read_next_bytes(fid, num_bytes, format_char_sequence, endian_character="<"):
     :return: Tuple of read and unpacked values.
     """
     data = fid.read(num_bytes) # 从当前文件指针位置开始，读取指定的字节数
-    return struct.unpack(endian_character + format_char_sequence, data) # 用struct.unpack()解码字节流
+    return struct.unpack(endian_character + format_char_sequence, data) # 用struct.unpack()解码字节流，返回一个元组
 
 # 该函数是用来从“colmap导出的稀疏点云文件points3D_text（一个列表）”中，读取每个高斯点的参数（空间坐标xyz、颜色rgb、重投影误差error等）
 def read_points3D_text(path):
@@ -134,6 +134,7 @@ def read_points3D_text(path):
 
     return xyzs, rgbs, errors
 
+# 与read_points3D_text()类似，但是从二进制版点云文件points3D.bin中，读取所有高斯的参数。
 def read_points3D_binary(path_to_model_file):
     """
     see: src/base/reconstruction.cc
@@ -161,8 +162,10 @@ def read_points3D_binary(path_to_model_file):
             xyz = np.array(binary_point_line_properties[1:4])
             rgb = np.array(binary_point_line_properties[4:7])
             error = np.array(binary_point_line_properties[7])
+            # 读取track_length参数，表示该点被多少个图像观测到。不保存，只移动指针。
             track_length = read_next_bytes(
                 fid, num_bytes=8, format_char_sequence="Q")[0]
+            # 读取接下来的track数组，长度为track_length，每个元素是一对整数 (image_id, point2D_idx)。不保存，只移动指针到下一个3d点的43字节。
             track_elems = read_next_bytes(
                 fid, num_bytes=8*track_length,
                 format_char_sequence="ii"*track_length)
@@ -171,6 +174,7 @@ def read_points3D_binary(path_to_model_file):
             errors[p_id] = error
     return xyzs, rgbs, errors
 
+# 用来读取colmap导出的相机参数文件cameras.txt
 def read_intrinsics_text(path):
     """
     Taken from https://github.com/colmap/colmap/blob/dev/scripts/python/read_write_model.py
