@@ -331,6 +331,8 @@ def read_colmap_bin_array(path):
                     break
             byte = fid.read(1)
         # 似乎结束循环时，指针将会停留在第三个&上。
-        array = np.fromfile(fid, np.float32)# 把剩余的浮点数据全部读取成一维数组。fromfile()：从文本或二进制文件中构建数组。
+        array = np.fromfile(fid, np.float32) # 把剩余的浮点数据全部读取成一维数组。fromfile()：从文本或二进制文件中构建数组。
+    # 数组重塑操作，order="F"表示按照列优先的方式填充。将1维数组array重塑成三维数组
     array = array.reshape((width, height, channels), order="F")
+    # 用np.transpose交换数组的第一维度width和第二维度height（由于参数为(1，0，2)）。squeeze()用来移除所有长度为1的维度，若channel=1，则数组直接变成二维数组。
     return np.transpose(array, (1, 0, 2)).squeeze()
