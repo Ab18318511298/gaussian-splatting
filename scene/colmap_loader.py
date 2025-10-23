@@ -143,7 +143,7 @@ def read_points3D_binary(path_to_model_file):
     """
 
 
-    with open(path_to_model_file, "rb") as fid:
+    with open(path_to_model_file, "rb") as fid: # rb表示二进制读取模式
         num_points = read_next_bytes(fid, 8, "Q")[0]
 
         xyzs = np.empty((num_points, 3))
@@ -174,7 +174,7 @@ def read_points3D_binary(path_to_model_file):
             errors[p_id] = error
     return xyzs, rgbs, errors
 
-# 用来读取colmap导出的相机参数文件cameras.txt
+# 从“colmap导出的相机参数文件cameras.txt”中，读取所有相机的内参，并构建一个Camera类型对象的字典
 def read_intrinsics_text(path):
     """
     Taken from https://github.com/colmap/colmap/blob/dev/scripts/python/read_write_model.py
@@ -194,9 +194,10 @@ def read_intrinsics_text(path):
                 assert model == "PINHOLE", "While the loader support other types, the rest of the code assumes PINHOLE"
                 width = int(elems[2])
                 height = int(elems[3])
+                # PINHOLE相机的params包括fx,fy两个焦距（单位：像素）和cx,cy主点坐标（单位：焦距）
                 # map()把每个字符串转换成浮点数迭代器，tuple()把迭代器变成元组，np.array()把元组变成numpy数组
                 params = np.array(tuple(map(float, elems[4:])))
-                # 创建相机对象
+                # 创建相机对象，存储相机内参，camera_id是唯一键
                 cameras[camera_id] = Camera(id=camera_id, model=model,
                                             width=width, height=height,
                                             params=params)
@@ -236,7 +237,7 @@ def read_extrinsics_binary(path_to_model_file):
                 xys=xys, point3D_ids=point3D_ids)
     return images
 
-
+# 从“colmap导出的二进制版文件cameras.bin”中，读取相机内参，返回一个camera类型对象的字典
 def read_intrinsics_binary(path_to_model_file):
     """
     see: src/base/reconstruction.cc
@@ -245,15 +246,17 @@ def read_intrinsics_binary(path_to_model_file):
     """
     cameras = {}
     with open(path_to_model_file, "rb") as fid:
-        num_cameras = read_next_bytes(fid, 8, "Q")[0]
+        num_cameras = read_next_bytes(fid, 8, "Q")[0] # 先读取相机个数
         for _ in range(num_cameras):
             camera_properties = read_next_bytes(
                 fid, num_bytes=24, format_char_sequence="iiQQ")
             camera_id = camera_properties[0]
             model_id = camera_properties[1]
+            # 从先前的相机列表字典中读取第二个：PINHOLE，取出model_name
             model_name = CAMERA_MODEL_IDS[camera_properties[1]].model_name
             width = camera_properties[2]
             height = camera_properties[3]
+            # 从先前的相机列表字典中读取第二个：PINHOLE，取出num_params(如PINHOLE的num_params为4)
             num_params = CAMERA_MODEL_IDS[model_id].num_params
             params = read_next_bytes(fid, num_bytes=8*num_params,
                                      format_char_sequence="d"*num_params)
@@ -261,11 +264,12 @@ def read_intrinsics_binary(path_to_model_file):
                                         model=model_name,
                                         width=width,
                                         height=height,
-                                        params=np.array(params))
-        assert len(cameras) == num_cameras
+                                        params=np.array(params)) # 对params不需要map()和tuple()，是因为read_next_bytes中已经用struct.unpack()解码成元组了。
+        assert len(cameras) == num_cameras # 循环结束后检查相机读取数量，确保文件没有截断或损坏
     return cameras
 
-
+# 从“colmap导出的相机外参、图像观测数据文件image.txt”中读取图像的相机外参、其他图像数据，返回一个Image类型对象的字典
+# image.txt中，每张图片对应两行数据。
 def read_extrinsics_text(path):
     """
     Taken from https://github.com/colmap/colmap/blob/dev/scripts/python/read_write_model.py
@@ -278,13 +282,13 @@ def read_extrinsics_text(path):
                 break
             line = line.strip()
             if len(line) > 0 and line[0] != "#":
-                elems = line.split()
+                elems = line.split()# 读取第一行：相机外参和相机信息
                 image_id = int(elems[0])
-                qvec = np.array(tuple(map(float, elems[1:5])))
-                tvec = np.array(tuple(map(float, elems[5:8])))
-                camera_id = int(elems[8])
+                qvec = np.array(tuple(map(float, elems[1:5]))) # 读取四元数
+                tvec = np.array(tuple(map(float, elems[5:8]))) # 读取平移向量
+                camera_id = int(elems[8]) # 读取图片对应的相机编号
                 image_name = elems[9]
-                elems = fid.readline().split()
+                elems = fid.readline().split() # 读取紧接着的下一行：该图片的观测数据
                 xys = np.column_stack([tuple(map(float, elems[0::3])),
                                        tuple(map(float, elems[1::3]))])
                 point3D_ids = np.array(tuple(map(int, elems[2::3])))
