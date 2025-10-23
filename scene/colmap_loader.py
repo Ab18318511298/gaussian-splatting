@@ -203,6 +203,7 @@ def read_intrinsics_text(path):
                                             params=params)
     return cameras
 
+# 从“comap导出的二进制版文件image.bin”中，读取每张图片的相机外参、图像相关信息，返回一个Image类型的字典
 def read_extrinsics_binary(path_to_model_file):
     """
     see: src/base/reconstruction.cc
@@ -211,6 +212,7 @@ def read_extrinsics_binary(path_to_model_file):
     """
     images = {}
     with open(path_to_model_file, "rb") as fid:
+        # 读取文件记录的图片数量
         num_reg_images = read_next_bytes(fid, 8, "Q")[0]
         for _ in range(num_reg_images):
             binary_image_properties = read_next_bytes(
@@ -221,13 +223,17 @@ def read_extrinsics_binary(path_to_model_file):
             camera_id = binary_image_properties[8]
             image_name = ""
             current_char = read_next_bytes(fid, 1, "c")[0]
-            while current_char != b"\x00":   # look for the ASCII 0 entry
+            # ASCII编码中\x00代表空字符，表示字符串的结束符
+            # python中，二进制“字符串”数据类型bytes有前缀b（如b“abc”），若没有前缀b，则说明是文本形式的Unicode字符串str。
+            while current_char != b"\x00": 
+                # decode()将字节转换成文本字符。存储采用标准 ASCII（UTF-8 的子集）
                 image_name += current_char.decode("utf-8")
                 current_char = read_next_bytes(fid, 1, "c")[0]
             num_points2D = read_next_bytes(fid, num_bytes=8,
                                            format_char_sequence="Q")[0]
             x_y_id_s = read_next_bytes(fid, num_bytes=24*num_points2D,
                                        format_char_sequence="ddq"*num_points2D)
+            # column_stack()把(x,y)拼成N×2的矩阵
             xys = np.column_stack([tuple(map(float, x_y_id_s[0::3])),
                                    tuple(map(float, x_y_id_s[1::3]))])
             point3D_ids = np.array(tuple(map(int, x_y_id_s[2::3])))
@@ -237,7 +243,7 @@ def read_extrinsics_binary(path_to_model_file):
                 xys=xys, point3D_ids=point3D_ids)
     return images
 
-# 从“colmap导出的二进制版文件cameras.bin”中，读取相机内参，返回一个camera类型对象的字典
+# 从“colmap导出的二进制版文件cameras.bin”中，读取相机内参，返回一个Camera类型对象的字典
 def read_intrinsics_binary(path_to_model_file):
     """
     see: src/base/reconstruction.cc
@@ -268,7 +274,7 @@ def read_intrinsics_binary(path_to_model_file):
         assert len(cameras) == num_cameras # 循环结束后检查相机读取数量，确保文件没有截断或损坏
     return cameras
 
-# 从“colmap导出的相机外参、图像观测数据文件image.txt”中读取图像的相机外参、其他图像数据，返回一个Image类型对象的字典
+# 从“colmap导出的相机外参、图像观测数据文件image.txt”中读取图像的相机外参、图像信息，返回一个Image类型对象的字典
 # image.txt中，每张图片对应两行数据。
 def read_extrinsics_text(path):
     """
@@ -289,6 +295,7 @@ def read_extrinsics_text(path):
                 camera_id = int(elems[8]) # 读取图片对应的相机编号
                 image_name = elems[9]
                 elems = fid.readline().split() # 读取紧接着的下一行：该图片的观测数据
+                # 读取每张图片上的2-3个像素点的xy坐标、对应的3d点编号。每个像素点的x、y、point3D_id为一组。
                 xys = np.column_stack([tuple(map(float, elems[0::3])),
                                        tuple(map(float, elems[1::3]))])
                 point3D_ids = np.array(tuple(map(int, elems[2::3])))
@@ -298,7 +305,7 @@ def read_extrinsics_text(path):
                     xys=xys, point3D_ids=point3D_ids)
     return images
 
-
+# 从“colmap导出的bin文件”中，读取出该图像的稠密像素信息（是一个浮点型3D数组，大小是该图像的width*height*channels），如深度、法线、置信度等。
 def read_colmap_bin_array(path):
     """
     Taken from https://github.com/colmap/colmap/blob/dev/scripts/python/read_dense.py
@@ -307,17 +314,23 @@ def read_colmap_bin_array(path):
     :return: nd array with the floating point values in the value
     """
     with open(path, "rb") as fid:
+        """
+        genfromtxt()用来读取文本文件中的数据，colmap在二进制头部用&来分隔整数。
+        delimiter="&"：以&作为分隔符来读取数据
+        usecols=(0, 1, 2)：读取第0、1、2列数据（实际上文件中只有一行数据。对应width、height、channels）
+        """
         width, height, channels = np.genfromtxt(fid, delimiter="&", max_rows=1,
                                                 usecols=(0, 1, 2), dtype=int)
-        fid.seek(0)
+        fid.seek(0) # 将文件指针重置回开头
         num_delimiter = 0
-        byte = fid.read(1)
+        byte = fid.read(1) # 从当前指针位置开始，移动指针，读取下一个字节到byte中。
         while True:
             if byte == b"&":
                 num_delimiter += 1
-                if num_delimiter >= 3:
+                if num_delimiter >= 3: # 指针读到第三个&上时，跳出循环
                     break
             byte = fid.read(1)
-        array = np.fromfile(fid, np.float32)
+        # 似乎结束循环时，指针将会停留在第三个&上。
+        array = np.fromfile(fid, np.float32)# 把剩余的浮点数据全部读取成一维数组。fromfile()：从文本或二进制文件中构建数组。
     array = array.reshape((width, height, channels), order="F")
     return np.transpose(array, (1, 0, 2)).squeeze()
