@@ -47,27 +47,28 @@ class SceneInfo(NamedTuple): # 同样“不可变”，能通过字段名访问�
     ply_path: str
     is_nerf_synthetic: bool
 
-# 基于Nerf++的normalization方法：根据相机的外参R、T，计算场景的中心点（translate）与半径（radius），从而把整个场景（点云与相机分布）归一化到标准尺度
+# 基于Nerf++的normalization方法：根据相机的外参R、T，计算场景的中心点平移量（translate）与半径（radius），为了把整个场景（点云与相机分布）归一化到标准尺度
 def getNerfppNorm(cam_info):
     def get_center_and_diag(cam_centers):
-        cam_centers = np.hstack(cam_centers)
-        avg_cam_center = np.mean(cam_centers, axis=1, keepdims=True)
+        cam_centers = np.hstack(cam_centers) # 把所有相机中心拼成一个 3×N 的矩阵，第一行均为x坐标，第二行均为y坐标，第三行均为z坐标
+        avg_cam_center = np.mean(cam_centers, axis=1, keepdims=True) # 计算所有相机中心的均值c_x、c_y、c_z，构成3×1矩阵
         center = avg_cam_center
-        dist = np.linalg.norm(cam_centers - center, axis=0, keepdims=True)
-        diagonal = np.max(dist)
-        return center.flatten(), diagonal
-
-    cam_centers = []
-
+        dist = np.linalg.norm(cam_centers - center, axis=0, keepdims=True) # 计算每个相机中心与场景中心的欧氏距离
+        diagonal = np.max(dist) # 找到最大距离，即“包围所有相机中心的球体的半径”，也为对角线长度的一半。
+        return center.flatten(), diagonal # flatten()将二维矩阵平铺成一维数组(c_x, c_y, c_z)
+    
+    cam_centers = [] # 创建一个包含多个相机中心的世界坐标（3×1）的列表
     for cam in cam_info:
-        W2C = getWorld2View2(cam.R, cam.T)
-        C2W = np.linalg.inv(W2C)
-        cam_centers.append(C2W[:3, 3:4])
+        W2C = getWorld2View2(cam.R, cam.T) # W2C = [[R_3×3, T_3×1], [0_1×3, 1]]
+        # 由于x_c​ = R * x_w​ + T，且x_c = 0，则x_w = -T * R_transpose。
+        # 又因为C2W = inv(W2C) = [[R_transpose, -R_transpose * T], [0, 1]，因此直接对C2W矩阵作切片可得到相机中心的世界坐标x_w
+        C2W = np.linalg.inv(W2C) 
+        cam_centers.append(C2W[:3, 3:4]) # 取C2W最后一列前三个元素（3×1向量）
 
     center, diagonal = get_center_and_diag(cam_centers)
-    radius = diagonal * 1.1
+    radius = diagonal * 1.1 # 略微增大半径，避免相机出现在边缘
 
-    translate = -center
+    translate = -center # 将相机平均中心点移回世界坐标原点需要的平移量
 
     return {"translate": translate, "radius": radius}
 
