@@ -72,7 +72,7 @@ def getNerfppNorm(cam_info):
 
     return {"translate": translate, "radius": radius}
 
-# 基于上层函数 readColmapSceneInfo()，读取并构建每个相机的 CameraInfo 对象（包含内参、外参、图像路径、FOV 等）
+# 读取并构建每个相机的 CameraInfo 对象（包含内参、外参、图像路径、FOV 等）
 def readColmapCameras(cam_extrinsics, cam_intrinsics, depths_params, images_folder, depths_folder, test_cam_names_list):
     cam_infos = []
     # 按照索引号、key（图像名）逐个读取每个图像的相机外参
@@ -132,6 +132,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, depths_params, images_fold
     sys.stdout.write('\n')
     return cam_infos # 返回cam_infos列表
 
+# 从 .ply 点云文件（一种常见的点云/网格格式，可以包含任意属性字段）中读取点的位置、颜色、法向量，并封装成 BasicPointCloud 对象
 def fetchPly(path):
     plydata = PlyData.read(path)
     vertices = plydata['vertex']
@@ -140,35 +141,41 @@ def fetchPly(path):
     normals = np.vstack([vertices['nx'], vertices['ny'], vertices['nz']]).T
     return BasicPointCloud(points=positions, colors=colors, normals=normals)
 
+# fetchply()的反操作，将内存中的点云数据保存为 .ply 文件
 def storePly(path, xyz, rgb):
-    # Define the dtype for the structured array
+    # 定义了.ply文件的字段结构：结构化numpy数组
+    # f4：float32类型；u1：uint8类型
     dtype = [('x', 'f4'), ('y', 'f4'), ('z', 'f4'),
             ('nx', 'f4'), ('ny', 'f4'), ('nz', 'f4'),
             ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')]
     
-    normals = np.zeros_like(xyz)
+    normals = np.zeros_like(xyz) # 创建一个与 xyz 相同形状的零矩阵，来存储法线
 
     elements = np.empty(xyz.shape[0], dtype=dtype)
-    attributes = np.concatenate((xyz, normals, rgb), axis=1)
-    elements[:] = list(map(tuple, attributes))
+    attributes = np.concatenate((xyz, normals, rgb), axis=1) # 把坐标、法线、颜色共9个元素拼接成一行的数组
+    elements[:] = list(map(tuple, attributes)) # 把每一行都转为 tuple 并填充到结构化数组中
 
     # Create the PlyData object and write to file
     vertex_element = PlyElement.describe(elements, 'vertex')
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
+# 基于readColmapCameras()，从一个 COLMAP 格式的重建结果目录中读取、解析并标准化场景的所有信息（相机、图像、点云、深度、测试划分、以及归一化参数等），并组装成一个统一的 SceneInfo 对象
 def readColmapSceneInfo(path, images, depths, eval, train_test_exp, llffhold=8):
-    try:
+    try: # 优先尝试读取二进制.bin格式，否则退回文本.txt格式
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
+        # 使用colmap_loader.py中定义的函数来读取相机内外参
         cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
         cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
     except:
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.txt")
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.txt")
+        # 使用colmap_loader.py中定义的函数来读取相机内外参
         cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
 
+    # 若指定了depths文件夹，则尝试加载深度参数depth_params.json
     depth_params_file = os.path.join(path, "sparse/0", "depth_params.json")
     ## if depth_params_file isnt there AND depths file is here -> throw error
     depths_params = None
@@ -176,12 +183,15 @@ def readColmapSceneInfo(path, images, depths, eval, train_test_exp, llffhold=8):
         try:
             with open(depth_params_file, "r") as f:
                 depths_params = json.load(f)
+            # 以图像名为索引，取出每张图对应的深度缩放比例scale，存储进numpy数组all_scales
             all_scales = np.array([depths_params[key]["scale"] for key in depths_params])
             if (all_scales > 0).sum():
+                # 计算出全局中位数med_scale
                 med_scale = np.median(all_scales[all_scales > 0])
             else:
                 med_scale = 0
             for key in depths_params:
+                # 把med_scale也补充到每个图像的参数中
                 depths_params[key]["med_scale"] = med_scale
 
         except FileNotFoundError:
@@ -191,32 +201,39 @@ def readColmapSceneInfo(path, images, depths, eval, train_test_exp, llffhold=8):
             print(f"An unexpected error occurred when trying to open depth_params.json file: {e}")
             sys.exit(1)
 
-    if eval:
-        if "360" in path:
+    # 划分训练集和测试集。输出结果test_cam_names_list是一个以“测试图像名”为元素的列表
+    if eval: # 若eval=True则需要测试图像
+        if "360" in path: # 若为LLFF 数据集的 “360 场景”，则每8张图测试一张图
             llffhold = 8
-        if llffhold:
+        if llffhold: # 若指定了llffhold，则每达指定数量测试一张图
             print("------------LLFF HOLD-------------")
             cam_names = [cam_extrinsics[cam_id].name for cam_id in cam_extrinsics]
             cam_names = sorted(cam_names)
             test_cam_names_list = [name for idx, name in enumerate(cam_names) if idx % llffhold == 0]
-        else:
+        else: # 否则直接从 test.txt 文件中读取测试图像名
             with open(os.path.join(path, "sparse/0", "test.txt"), 'r') as file:
                 test_cam_names_list = [line.strip() for line in file]
-    else:
+    else: # 若eval=False则全为训练图像；
         test_cam_names_list = []
 
     reading_dir = "images" if images == None else images
+    # 调用readColmapCameras()函数，把 COLMAP 的外参/内参、深度参数、图像目录/深度目录及测试集名单传进去，得到一个未排序的 CameraInfo 列表
     cam_infos_unsorted = readColmapCameras(
         cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, depths_params=depths_params,
         images_folder=os.path.join(path, reading_dir), 
         depths_folder=os.path.join(path, depths) if depths != "" else "", test_cam_names_list=test_cam_names_list)
+    # 复制一份列表，按照图像名的“字典序”来排序，得到稳定、可重现的相机信息列表cam_infos，该列表是一个list[CameraInfo]
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
 
+    # 基于c.is_test的布尔值标志把 cam_infos 列表拆分为训练集和测试集
+    # 当train_test_exp = False（默认值）时区分训练集和测试集。 = True时把所有图像都放进训练集（即不区分训练集和测试集）
     train_cam_infos = [c for c in cam_infos if train_test_exp or not c.is_test]
     test_cam_infos = [c for c in cam_infos if c.is_test]
 
+    # 用getNerfppNorm()取得场景平移量、半径，用于归一化场景坐标
     nerf_normalization = getNerfppNorm(train_cam_infos)
-
+    
+    # 准备读取点云，ply格式优先，其次是bin，最后是txt。
     ply_path = os.path.join(path, "sparse/0/points3D.ply")
     bin_path = os.path.join(path, "sparse/0/points3D.bin")
     txt_path = os.path.join(path, "sparse/0/points3D.txt")
@@ -226,12 +243,13 @@ def readColmapSceneInfo(path, images, depths, eval, train_test_exp, llffhold=8):
             xyz, rgb, _ = read_points3D_binary(bin_path)
         except:
             xyz, rgb, _ = read_points3D_text(txt_path)
-        storePly(ply_path, xyz, rgb)
+        storePly(ply_path, xyz, rgb) # bin和txt读取后需要用storePly()转换为ply格式，返回 BasicPointCloud 对象。
     try:
-        pcd = fetchPly(ply_path)
+        pcd = fetchPly(ply_path) # 优先尝试读取.ply点云，返回 BasicPointCloud 对象。
     except:
         pcd = None
 
+    # 将读取的数据均放入scene_info这个SceneInfo类型的标准化容器。
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,
@@ -240,15 +258,17 @@ def readColmapSceneInfo(path, images, depths, eval, train_test_exp, llffhold=8):
                            is_nerf_synthetic=False)
     return scene_info
 
+# 与readColmapCameras() 作用类似，但从transforms.json（NeRF 数据集的描述文件） 读取
 def readCamerasFromTransforms(path, transformsfile, depths_folder, white_background, is_test, extension=".png"):
     cam_infos = []
 
     with open(os.path.join(path, transformsfile)) as json_file:
         contents = json.load(json_file)
-        fovx = contents["camera_angle_x"]
+        fovx = contents["camera_angle_x"] # 读取水平方向视场角（单位：弧度），这是blender格式唯一的相机内参
 
-        frames = contents["frames"]
+        frames = contents["frames"] # frames是列表，每个元素包含“相对图像路径file_path”和4×4的“c2w矩阵transform_matrix”
         for idx, frame in enumerate(frames):
+            # 对每个图片，拼接完整的图像路径
             cam_name = os.path.join(path, frame["file_path"] + extension)
 
             # NeRF 'transform_matrix' is a camera-to-world transform
