@@ -93,17 +93,22 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, depths_params, images_fold
         T = np.array(extr.tvec) # 转换成numpy数组
 
         if intr.model=="SIMPLE_PINHOLE": # 单焦距（f）模型
-            focal_length_x = intr.params[0]
+            # 读取内参中的焦距
+            focal_length_x = intr.params[0] 
+            # focal2fov()用来从焦距计算视场角（单位：弧度）
             FovY = focal2fov(focal_length_x, height)
             FovX = focal2fov(focal_length_x, width)
         elif intr.model=="PINHOLE": # 双焦距（fx, fy）模型
+            # 读取内参中的两个
             focal_length_x = intr.params[0]
             focal_length_y = intr.params[1]
+            # focal2fov()用来从焦距计算视场角（单位：弧度）
             FovY = focal2fov(focal_length_y, height)
             FovX = focal2fov(focal_length_x, width)
         else:
             assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
 
+        # 尝试匹配深度估计参数
         n_remove = len(extr.name.split('.')[-1]) + 1
         depth_params = None
         if depths_params is not None:
@@ -112,17 +117,20 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, depths_params, images_fold
             except:
                 print("\n", key, "not found in depths_params")
 
+        # 拼接图像与深度文件路径
         image_path = os.path.join(images_folder, extr.name)
         image_name = extr.name
         depth_path = os.path.join(depths_folder, f"{extr.name[:-n_remove]}.png") if depths_folder != "" else ""
 
+        # 构建 CameraInfo 类型的对象，每个cam_info都封装一个相机的完整信息
+        # is_test布尔值判断image_name是否在test_cam_names_list中。
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, depth_params=depth_params,
                               image_path=image_path, image_name=image_name, depth_path=depth_path,
                               width=width, height=height, is_test=image_name in test_cam_names_list)
         cam_infos.append(cam_info)
 
     sys.stdout.write('\n')
-    return cam_infos
+    return cam_infos # 返回cam_infos列表
 
 def fetchPly(path):
     plydata = PlyData.read(path)
