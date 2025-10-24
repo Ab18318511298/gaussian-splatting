@@ -72,21 +72,24 @@ def getNerfppNorm(cam_info):
 
     return {"translate": translate, "radius": radius}
 
+# 基于上层函数 readColmapSceneInfo()，读取并构建每个相机的 CameraInfo 对象（包含内参、外参、图像路径、FOV 等）
 def readColmapCameras(cam_extrinsics, cam_intrinsics, depths_params, images_folder, depths_folder, test_cam_names_list):
     cam_infos = []
+    # 按照索引号、key（图像名）逐个读取每个图像的相机外参
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write('\r')
-        # the exact output you're looking for:
+        # 带进度条，可视化读取过程：
         sys.stdout.write("Reading camera {}/{}".format(idx+1, len(cam_extrinsics)))
+        # 刷新标准输出流的缓冲区，确保实时显现读取结果
         sys.stdout.flush()
 
-        extr = cam_extrinsics[key]
-        intr = cam_intrinsics[extr.camera_id]
+        extr = cam_extrinsics[key] # 依照图像名来提取外参（四元数、平移向量、图像名、对应相机id等）
+        intr = cam_intrinsics[extr.camera_id] # 依照对应相机id提取内参（焦距、相机类型、图像宽高等）
         height = intr.height
         width = intr.width
 
         uid = intr.id
-        R = np.transpose(qvec2rotmat(extr.qvec))
+        R = np.transpose(qvec2rotmat(extr.qvec)) # 将外参中的四元数转变成3×3旋转矩阵R_C2W，再转置变为R_W2C存储
         T = np.array(extr.tvec)
 
         if intr.model=="SIMPLE_PINHOLE":
