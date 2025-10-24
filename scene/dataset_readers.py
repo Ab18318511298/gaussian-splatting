@@ -23,21 +23,23 @@ from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
 
-class CameraInfo(NamedTuple):
+# 定义了一个“统一标准”的相机信息结构体，让不同来源的数据都转化为该结构。
+class CameraInfo(NamedTuple): # 是NamedTuple类型，是个“不可变”的数据容器，能像字典一样通过字段名访问数据
     uid: int
     R: np.array
     T: np.array
-    FovY: np.array
-    FovX: np.array
+    FovY: np.array # 垂直方向视场角
+    FovX: np.array # 水平方向视场角
     depth_params: dict
     image_path: str
     image_name: str
-    depth_path: str
+    depth_path: str # 深度图文件路径（可能为空）
     width: int
     height: int
     is_test: bool
 
-class SceneInfo(NamedTuple):
+# 从不同数据格式加载场景后返回的标准化接口。
+class SceneInfo(NamedTuple): # 同样“不可变”，能通过字段名访问数据
     point_cloud: BasicPointCloud
     train_cameras: list
     test_cameras: list
@@ -45,6 +47,7 @@ class SceneInfo(NamedTuple):
     ply_path: str
     is_nerf_synthetic: bool
 
+# 基于Nerf++的normalization方法：根据相机的外参R、T，计算场景的中心点（translate）与半径（radius），从而把整个场景（点云与相机分布）归一化到标准尺度
 def getNerfppNorm(cam_info):
     def get_center_and_diag(cam_centers):
         cam_centers = np.hstack(cam_centers)
