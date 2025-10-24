@@ -29,40 +29,45 @@ except:
 
 class GaussianModel:
 
+    # 指定高斯点各参数的激活函数，以及如何将R、s转化为协方差矩阵Σ
     def setup_functions(self):
         def build_covariance_from_scaling_rotation(scaling, scaling_modifier, rotation):
             L = build_scaling_rotation(scaling_modifier * scaling, rotation)
             actual_covariance = L @ L.transpose(1, 2)
             symm = strip_symmetric(actual_covariance)
             return symm
-        
+
+        # 缩放参数使用exp激活函数保证必为正数。
         self.scaling_activation = torch.exp
         self.scaling_inverse_activation = torch.log
 
+        # 协方差阵直接由上面的函数定义
         self.covariance_activation = build_covariance_from_scaling_rotation
 
+        # 由于不透明度α取[0, 1]，因此使用sigmoid激活函数
         self.opacity_activation = torch.sigmoid
         self.inverse_opacity_activation = inverse_sigmoid
-
+        
+        #对旋转向量单位化，保证只旋转不缩放
         self.rotation_activation = torch.nn.functional.normalize
 
-
+    # 初始化一个“空”的高斯点云模型对象，定义所有关键参数的容器（Tensor）
     def __init__(self, sh_degree, optimizer_type="default"):
-        self.active_sh_degree = 0
-        self.optimizer_type = optimizer_type
-        self.max_sh_degree = sh_degree  
+        self.active_sh_degree = 0 # 当前的球谐函数阶数
+        self.optimizer_type = optimizer_type # 优化器类型
+        self.max_sh_degree = sh_degree # 最高球谐阶数
         self._xyz = torch.empty(0)
-        self._features_dc = torch.empty(0)
-        self._features_rest = torch.empty(0)
+        self._features_dc = torch.empty(0) # 0阶球谐特征
+        self._features_rest = torch.empty(0) # 高阶球谐特征
         self._scaling = torch.empty(0)
         self._rotation = torch.empty(0)
         self._opacity = torch.empty(0)
-        self.max_radii2D = torch.empty(0)
-        self.xyz_gradient_accum = torch.empty(0)
-        self.denom = torch.empty(0)
-        self.optimizer = None
-        self.percent_dense = 0
-        self.spatial_lr_scale = 0
+        self.max_radii2D = torch.empty(0) # 每个点在图像空间的最大半径
+        self.xyz_gradient_accum = torch.empty(0) # 坐标梯度累积
+        self.denom = torch.empty(0) # 梯度归一化分母
+        self.optimizer = None # 优化器对象
+        self.percent_dense = 0 # 稠密化比例
+        self.spatial_lr_scale = 0 # 空间学习率缩放
         self.setup_functions()
 
     def capture(self):
