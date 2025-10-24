@@ -282,60 +282,72 @@ def readCamerasFromTransforms(path, transformsfile, depths_folder, white_backgro
             T = w2c[:3, 3]
 
             image_path = os.path.join(path, cam_name)
-            image_name = Path(cam_name).stem
-            image = Image.open(image_path)
+            image_name = Path(cam_name).stem # 从完整的图像路径中提取出不含扩展名的图像名（如“r_001”），用来后续匹配深度图（如“r_001_depth”）
+            image = Image.open(image_path) # 用PIL（Python Imaging Library）打开图像文件,返回一个Image类型的对象
 
-            im_data = np.array(image.convert("RGBA"))
+            im_data = np.array(image.convert("RGBA")) # 把图像统一转为RGBA格式后，再转为numpy数组。
 
+            """
+            接下来将结合bg，应用α—blending，去除不透明度α的维度，只保留RGB三维。
+            """
             bg = np.array([1,1,1]) if white_background else np.array([0, 0, 0])
 
             norm_data = im_data / 255.0
+            # 使用α-blending公式：final_color = α * foreground + (1 − α) * background，将第四维α融入前三维，因为后续训练只允许输入RGB图像。
             arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])
+            # np.byte为int8。Image.fromarray(..., "RGB")用来从 numpy 数组指定创建一张三通道彩色图，得到image这个Image类型的对象。
             image = Image.fromarray(np.array(arr*255.0, dtype=np.byte), "RGB")
 
+            # 由于只给了fovx，因此需要先用fov2focal()，根据fovx和宽Width求焦距；再用focal2fov()，根据焦距和高Height求fovy。
             fovy = focal2fov(fov2focal(fovx, image.size[0]), image.size[1])
             FovY = fovy 
             FovX = fovx
 
             depth_path = os.path.join(depths_folder, f"{image_name}.png") if depths_folder != "" else ""
 
+            # 构建一个CameraInfo类型的对象，保存当前相机的所有参数
             cam_infos.append(CameraInfo(uid=idx, R=R, T=T, FovY=FovY, FovX=FovX,
                             image_path=image_path, image_name=image_name,
                             width=image.size[0], height=image.size[1], depth_path=depth_path, depth_params=None, is_test=is_test))
             
-    return cam_infos
+    return cam_infos # 返回一个list[CameraInfo]
 
+# 与readColmapSceneInfo()类似，但读取的是NeRF-synthetic（Blender 渲染）数据集。
 def readNerfSyntheticInfo(path, white_background, depths, eval, extension=".png"):
 
+    # 处理深度图文件夹路径（如果提供了depths）
     depths_folder=os.path.join(path, depths) if depths != "" else ""
+    # 用readCamerasFromTransforms()函数，从对应的json文件加载训练集与测试集，返回每张图片对应的 CameraInfo 对象
     print("Reading Training Transforms")
     train_cam_infos = readCamerasFromTransforms(path, "transforms_train.json", depths_folder, white_background, False, extension)
     print("Reading Test Transforms")
     test_cam_infos = readCamerasFromTransforms(path, "transforms_test.json", depths_folder, white_background, True, extension)
-    
-    if not eval:
+
+    # 若eval = False，为“不评估”模式，则把所有相机都当作训练用。
+    if not eval: 
         train_cam_infos.extend(test_cam_infos)
         test_cam_infos = []
 
+    # 用getNerfppNorm()取得场景平移量、半径，用于归一化场景坐标
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
     ply_path = os.path.join(path, "points3d.ply")
     if not os.path.exists(ply_path):
-        # Since this data set has no colmap data, we start with random points
-        num_pts = 100_000
+        # 因为blender渲染出来的数据集没有稠密的SfM点云，因此可以初始化一个“随机点云”
+        num_pts = 100_000 # 创建 100,000 个随机 3D 点
         print(f"Generating random point cloud ({num_pts})...")
         
-        # We create random points inside the bounds of the synthetic Blender scenes
-        xyz = np.random.random((num_pts, 3)) * 2.6 - 1.3
-        shs = np.random.random((num_pts, 3)) / 255.0
+        xyz = np.random.random((num_pts, 3)) * 2.6 - 1.3 # xyz均处在[-1.3, +1.3]的范围中（Blender 默认场景边界）
+        shs = np.random.random((num_pts, 3)) / 255.0 # 随机生成颜色
         pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
 
-        storePly(ply_path, xyz, SH2RGB(shs) * 255)
+        storePly(ply_path, xyz, SH2RGB(shs) * 255) # 用storePly()保存数据为ply文件
     try:
-        pcd = fetchPly(ply_path)
+        pcd = fetchPly(ply_path) # 调用fetchPly()读取上面的文件
     except:
         pcd = None
 
+    # 构建SceneInfo类型的对象。
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,
@@ -344,6 +356,7 @@ def readNerfSyntheticInfo(path, white_background, depths, eval, extension=".png"
                            is_nerf_synthetic=True)
     return scene_info
 
+# 将两种场景加载方式打包为字典，决定程序读取不同类型的数据集时，调用哪个加载函数
 sceneLoadTypeCallbacks = {
     "Colmap": readColmapSceneInfo,
     "Blender" : readNerfSyntheticInfo
