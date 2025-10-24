@@ -90,13 +90,13 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, depths_params, images_fold
 
         uid = intr.id
         R = np.transpose(qvec2rotmat(extr.qvec)) # 将外参中的四元数转变成3×3旋转矩阵R_C2W，再转置变为R_W2C存储
-        T = np.array(extr.tvec)
+        T = np.array(extr.tvec) # 转换成numpy数组
 
-        if intr.model=="SIMPLE_PINHOLE":
+        if intr.model=="SIMPLE_PINHOLE": # 单焦距（f）模型
             focal_length_x = intr.params[0]
             FovY = focal2fov(focal_length_x, height)
             FovX = focal2fov(focal_length_x, width)
-        elif intr.model=="PINHOLE":
+        elif intr.model=="PINHOLE": # 双焦距（fx, fy）模型
             focal_length_x = intr.params[0]
             focal_length_y = intr.params[1]
             FovY = focal2fov(focal_length_y, height)
