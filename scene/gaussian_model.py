@@ -67,8 +67,8 @@ class GaussianModel:
         self._rotation = torch.empty(0)
         self._opacity = torch.empty(0)
         self.max_radii2D = torch.empty(0) # 每个点在图像空间的最大半径
-        self.xyz_gradient_accum = torch.empty(0) # 坐标梯度累积
-        self.denom = torch.empty(0) # 梯度归一化分母
+        self.xyz_gradient_accum = torch.empty(0) # 累计每个点的梯度模平方
+        self.denom = torch.empty(0) # 记录每个点更新的次数
         self.optimizer = None # 优化器对象
         self.percent_dense = 0 # 稠密化比例
         self.spatial_lr_scale = 0 # 空间学习率缩放
@@ -172,43 +172,64 @@ class GaussianModel:
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0]) # 输出确认初始化规模
 
+        """
+        计算每个点的初始尺度。
+        distCUDA2()：用来计算与最近k个点的平均欧式距离平方（论文中k=3）。
+        clamp_min()：只要tensor中有数据小于给定的下限0.0000001，就直接赋值下限，避免重叠点的距离计算为0。
+        """
         dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001)
+        # 将dist2取平方根（由于距离平方）后，取log（由于激活函数为exp），再扩展到三个完整的维度，得到“各向同性”的球形高斯点的初始化尺度scales
         scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
+        # 初始化N个单位四元数(1, 0, 0, 0)，表示无旋转
         rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
         rots[:, 0] = 1
 
+        # 设定初始透明度均为0.1，然后调用inverse_opacity_activation()，用sigmoid的反函数logit存储初始透明度。
         opacities = self.inverse_opacity_activation(0.1 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
 
+        # 将这些属性注册为“可梯度优化的参数”
         self._xyz = nn.Parameter(fused_point_cloud.requires_grad_(True))
         self._features_dc = nn.Parameter(features[:,:,0:1].transpose(1, 2).contiguous().requires_grad_(True))
         self._features_rest = nn.Parameter(features[:,:,1:].transpose(1, 2).contiguous().requires_grad_(True))
         self._scaling = nn.Parameter(scales.requires_grad_(True))
         self._rotation = nn.Parameter(rots.requires_grad_(True))
         self._opacity = nn.Parameter(opacities.requires_grad_(True))
+        # 初始化辅助张量，用于在投影时记录每个点在屏幕上的最大半径
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
+        # 创建exposure_mapping字典，记录image_name → exposure_index，供 get_exposure_from_name() 使用。
         self.exposure_mapping = {cam_info.image_name: idx for idx, cam_info in enumerate(cam_infos)}
         self.pretrained_exposures = None
+        # eye()用来创立2D的仿射矩阵。eye(3, 4)：tensor([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]])。
+        # repeat(len(cam_infos), 1, 1)对每个图像都初始化一个仿射矩阵。
         exposure = torch.eye(3, 4, device="cuda")[None].repeat(len(cam_infos), 1, 1)
         self._exposure = nn.Parameter(exposure.requires_grad_(True))
 
+    # 该函数在训练时，决定各个可学习参数（点的位置、特征、旋转、缩放、透明度等）的学习率与调度策略
     def training_setup(self, training_args):
         self.percent_dense = training_args.percent_dense
+        # 初始化存储每个点的“累积梯度模平方”，即在该点的梯度向量(∇x, ∇y, ∇z)的平方和，表示点“位置的梯度强度”。
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        # 初始化存储每个点的更新次数
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
 
+        # 为参数分组，每个参数组都设置字典，并设置不同的学习率策略。
+        # l：包含多个字典的列表。lr：该参数组的学习率。name：参数组名字。
         l = [
+            # 由于位置xyz变化幅度大，因此采用“较高初始学习率 × 空间缩放系数”的策略
             {'params': [self._xyz], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
             {'params': [self._features_dc], 'lr': training_args.feature_lr, "name": "f_dc"},
+            # 由于球谐高阶特征变化平缓，因此学习率策略要比0阶球谐系数小很多。
             {'params': [self._features_rest], 'lr': training_args.feature_lr / 20.0, "name": "f_rest"},
             {'params': [self._opacity], 'lr': training_args.opacity_lr, "name": "opacity"},
             {'params': [self._scaling], 'lr': training_args.scaling_lr, "name": "scaling"},
             {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"}
         ]
 
-        if self.optimizer_type == "default":
-            self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
+        # 优化器选择
+        if self.optimizer_type == "default": # 默认使用pytorch的Adam优化器
+            self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15) # 这里的lr=0.0仅当上面参数组“未定义学习率策略”时采用。
         elif self.optimizer_type == "sparse_adam":
-            try:
+            try: # SparseGaussianAdam 是为 3DGS 优化设计的版本，它可以高效地在稀疏点集上只更新可见的高斯。
                 self.optimizer = SparseGaussianAdam(l, lr=0.0, eps=1e-15)
             except:
                 # A special version of the rasterizer is required to enable sparse adam
