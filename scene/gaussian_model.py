@@ -239,20 +239,24 @@ class GaussianModel:
         self.exposure_optimizer = torch.optim.Adam([self._exposure])
 
         # get_expon_lr_func()会返回一个“指数衰减调度函数”，让位置xyz初期快速收敛，后期逐步减小步长以优化细节。
+        # lr_delay_steps若未设置，则默认为0，即没有“warm-up”阶段，直接进行指数衰减调度。
         self.xyz_scheduler_args = get_expon_lr_func(lr_init=training_args.position_lr_init*self.spatial_lr_scale,
                                                     lr_final=training_args.position_lr_final*self.spatial_lr_scale,
                                                     lr_delay_mult=training_args.position_lr_delay_mult,
                                                     max_steps=training_args.position_lr_max_steps)
 
         # 为曝光矩阵设置独立的指数衰减调度，因为曝光参数往往收敛较慢，需要不同的调度周期。
+        # 对exposure的优化，设置了lr_delay_steps，说明在前期存在“warm-up”阶段，学习率从lr_delay_mult * lr_init开始，上升到lr_mult。避免训练初期剧烈震荡。
         self.exposure_scheduler_args = get_expon_lr_func(training_args.exposure_lr_init, training_args.exposure_lr_final,
                                                         lr_delay_steps=training_args.exposure_lr_delay_steps,
                                                         lr_delay_mult=training_args.exposure_lr_delay_mult,
                                                         max_steps=training_args.iterations)
 
+    # 该函数根据当前的迭代步数更新不同参数组的学习率。
     def update_learning_rate(self, iteration):
         ''' Learning rate scheduling per step '''
-        if self.pretrained_exposures is None:
+        if self.pretrained_exposures is None: # 如果没有预训练的曝光参数
+            # 
             for param_group in self.exposure_optimizer.param_groups:
                 param_group['lr'] = self.exposure_scheduler_args(iteration)
 
