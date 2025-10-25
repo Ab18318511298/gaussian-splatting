@@ -32,6 +32,7 @@ class GaussianModel:
     # 指定高斯点各参数的激活函数，以及如何将R、s转化为协方差矩阵Σ
     def setup_functions(self):
         def build_covariance_from_scaling_rotation(scaling, scaling_modifier, rotation):
+            # build_scaling_rotation()返回线性变换矩阵R @ S，其中R为四元数rotation经过
             L = build_scaling_rotation(scaling_modifier * scaling, rotation)
             actual_covariance = L @ L.transpose(1, 2)
             symm = strip_symmetric(actual_covariance)
@@ -140,17 +141,18 @@ class GaussianModel:
     @property
     def get_exposure(self):
         return self._exposure
-
+    
     def get_exposure_from_name(self, image_name):
-        if self.pretrained_exposures is None:
+        if self.pretrained_exposures is None: # 若设置为“使用训练阶段学习到的曝光参数”
+            # self.exposure_mapping 是一个字典：{image_name: exposure_index}
             return self._exposure[self.exposure_mapping[image_name]]
-        else:
+        else: # 若设置为“使用预训练或外部曝光参数”
             return self.pretrained_exposures[image_name]
     
     def get_covariance(self, scaling_modifier = 1):
         return self.covariance_activation(self.get_scaling, scaling_modifier, self._rotation)
 
-    def oneupSHdegree(self):
+    def oneupSHdegree(self): # 用来提升当前使用的球谐函数阶数
         if self.active_sh_degree < self.max_sh_degree:
             self.active_sh_degree += 1
 
