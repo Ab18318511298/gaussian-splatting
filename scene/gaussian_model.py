@@ -289,22 +289,33 @@ class GaussianModel:
             l.append('rot_{}'.format(i))
         return l
 
+    # 把当前的高斯点模型参数（位置、特征、尺度、旋转、不透明度等）保存为 .ply 文件（Point Cloud 格式）
     def save_ply(self, path):
+        # mkdir_p等价于 os.makedirs(..., exist_ok=True)，确保文件路径存在，否则创建路径。
         mkdir_p(os.path.dirname(path))
 
         xyz = self._xyz.detach().cpu().numpy()
-        normals = np.zeros_like(xyz)
+        # 无法线信息，只创建与xyz同大小的0矩阵[N, 3]
+        normals = np.zeros_like(xyz) 
+        # transpose(1, 2).flatten(start_dim=1)：将[N, 3, 1]变为[N, 1, 3]，再变为[N, 3]（为了与平铺的属性名对应）。contiguous() 确保内存连续
         f_dc = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
+        # transpose(1, 2).flatten(start_dim=1)：将[N, 3, 15]变为[N, 15, 3]，再变为[N, 45]（为了与平铺的属性名对应）。contiguous() 确保内存连续
         f_rest = self._features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
         opacities = self._opacity.detach().cpu().numpy()
         scale = self._scaling.detach().cpu().numpy()
         rotation = self._rotation.detach().cpu().numpy()
 
+        # 构造.ply文件的数据结构
+        # 'f4'：每个属性名对应一个float32数据。construct_list_of_attributes()得到属性名列表。
         dtype_full = [(attribute, 'f4') for attribute in self.construct_list_of_attributes()]
 
-        elements = np.empty(xyz.shape[0], dtype=dtype_full)
+        elements = np.empty(xyz.shape[0], dtype=dtype_full) # 每个高斯点是 .ply 文件中的一个顶点
+        # concatenate()将所有属性拼接在一起，拼成二维矩阵[N, total_dim]。
         attributes = np.concatenate((xyz, normals, f_dc, f_rest, opacities, scale, rotation), axis=1)
+        # map(tuple, attributes)将每一行（单个高斯点的所有属性）转为一个元组，将元组属性分别横向填入elements这个结构化数组。
+        # elements给每一列都起了名字、数据类型，共有total_dim列；行则为索引，每一行表示一个高斯点，共有N行。
         elements[:] = list(map(tuple, attributes))
+        # 写入.ply文件
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)
 
@@ -316,22 +327,29 @@ class GaussianModel:
         optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
         self._opacity = optimizable_tensors["opacity"] # 更新模型参数_opacity为新tensor。
 
+    # 把保存在.ply文件中的高斯点云特征重新加载回GaussianModel的可训练参数中。
     def load_ply(self, path, use_train_test_exp = False):
         plydata = PlyData.read(path)
         if use_train_test_exp:
             exposure_file = os.path.join(os.path.dirname(path), os.pardir, os.pardir, "exposure.json")
+            # 如果存在expose.json文件
             if os.path.exists(exposure_file):
                 with open(exposure_file, "r") as f:
+                    # 读入所有图像的曝光矩阵
                     exposures = json.load(f)
+                    # 存储在“预训练曝光参数”中。
                 self.pretrained_exposures = {image_name: torch.FloatTensor(exposures[image_name]).requires_grad_(False).cuda() for image_name in exposures}
                 print(f"Pretrained exposures loaded.")
             else:
                 print(f"No exposure to be loaded at {exposure_file}")
                 self.pretrained_exposures = None
 
+        # 恢复每个点的xyz（[N, 3]）和opacity（[N, 1]）
+        # np.asarray()同np.array()的区别在于，在数据已经是numpy数组时不会进行复制。
         xyz = np.stack((np.asarray(plydata.elements[0]["x"]),
                         np.asarray(plydata.elements[0]["y"]),
                         np.asarray(plydata.elements[0]["z"])),  axis=1)
+        # [..., np.newaxis]用于增加新维度，将一维数组[N]变为二维数组[N, 1]。
         opacities = np.asarray(plydata.elements[0]["opacity"])[..., np.newaxis]
 
         features_dc = np.zeros((xyz.shape[0], 3, 1))
@@ -339,9 +357,13 @@ class GaussianModel:
         features_dc[:, 1, 0] = np.asarray(plydata.elements[0]["f_dc_1"])
         features_dc[:, 2, 0] = np.asarray(plydata.elements[0]["f_dc_2"])
 
+        # 如果列的属性名以f_rest_开头，则取出来放入extra_f_names
         extra_f_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("f_rest_")]
+        # sorted()：对列表进行排序并返回新的列表。lambda：用来定义匿名函数，等价于def key(x): return x。x.split('_')[-1]：把x按下划线'_'分割，取最后一段（如"f_rest_0"取0，便于排序）
         extra_f_names = sorted(extra_f_names, key = lambda x: int(x.split('_')[-1]))
+        # 检查名字数量是否和高阶球谐系数相等（45个）
         assert len(extra_f_names)==3*(self.max_sh_degree + 1) ** 2 - 3
+        # 创建二位numpy数组[N, 45]
         features_extra = np.zeros((xyz.shape[0], len(extra_f_names)))
         for idx, attr_name in enumerate(extra_f_names):
             features_extra[:, idx] = np.asarray(plydata.elements[0][attr_name])
@@ -360,6 +382,7 @@ class GaussianModel:
         for idx, attr_name in enumerate(rot_names):
             rots[:, idx] = np.asarray(plydata.elements[0][attr_name])
 
+        # 将 numpy 数据转到 GPU 上，声明为 nn.Parameter，从而变回可训练参数。
         self._xyz = nn.Parameter(torch.tensor(xyz, dtype=torch.float, device="cuda").requires_grad_(True))
         self._features_dc = nn.Parameter(torch.tensor(features_dc, dtype=torch.float, device="cuda").transpose(1, 2).contiguous().requires_grad_(True))
         self._features_rest = nn.Parameter(torch.tensor(features_extra, dtype=torch.float, device="cuda").transpose(1, 2).contiguous().requires_grad_(True))
@@ -369,6 +392,7 @@ class GaussianModel:
 
         self.active_sh_degree = self.max_sh_degree
 
+    # 该函数能够将优化器中某一个参数tensor替换为新tensor，用于“正则化”重置不透明度α时，用新的opacity张量替换优化器中的参数“opacity”。
     def replace_tensor_to_optimizer(self, tensor, name):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
