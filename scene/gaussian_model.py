@@ -235,13 +235,16 @@ class GaussianModel:
                 # A special version of the rasterizer is required to enable sparse adam
                 self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
 
+        # 单独为[N, 3, 4]曝光矩阵设置好优化器Adam，因为曝光矩阵的更新规律、学习率、调度策略都与高斯参数（位置、缩放、颜色等）不同。
         self.exposure_optimizer = torch.optim.Adam([self._exposure])
 
+        # get_expon_lr_func()会返回一个“指数衰减调度函数”，让位置xyz初期快速收敛，后期逐步减小步长以优化细节。
         self.xyz_scheduler_args = get_expon_lr_func(lr_init=training_args.position_lr_init*self.spatial_lr_scale,
                                                     lr_final=training_args.position_lr_final*self.spatial_lr_scale,
                                                     lr_delay_mult=training_args.position_lr_delay_mult,
                                                     max_steps=training_args.position_lr_max_steps)
-        
+
+        # 为曝光矩阵设置独立的指数衰减调度，因为曝光参数往往收敛较慢，需要不同的调度周期。
         self.exposure_scheduler_args = get_expon_lr_func(training_args.exposure_lr_init, training_args.exposure_lr_final,
                                                         lr_delay_steps=training_args.exposure_lr_delay_steps,
                                                         lr_delay_mult=training_args.exposure_lr_delay_mult,
