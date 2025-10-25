@@ -70,6 +70,7 @@ class GaussianModel:
         self.spatial_lr_scale = 0 # 空间学习率缩放
         self.setup_functions()
 
+    # 保存模型的当前参数状态和优化器状态，打包成一个不可变的元组（tuple），和restore()相对。
     def capture(self):
         return (
             self.active_sh_degree,
@@ -85,7 +86,8 @@ class GaussianModel:
             self.optimizer.state_dict(),
             self.spatial_lr_scale,
         )
-    
+
+    # 从保存的模型快照（tuple）中恢复出完整的高斯点云模型状态。
     def restore(self, model_args, training_args):
         (self.active_sh_degree, 
         self._xyz, 
@@ -98,13 +100,14 @@ class GaussianModel:
         xyz_gradient_accum, 
         denom,
         opt_dict, 
-        self.spatial_lr_scale) = model_args
-        self.training_setup(training_args)
-        self.xyz_gradient_accum = xyz_gradient_accum
+        self.spatial_lr_scale) = model_args # model_args来自capture()保存的tuple。
+        self.training_setup(training_args) # 根据 training_args 创建一个新的优化器对象（如Adam）
+        # 恢复梯度统计量
+        self.xyz_gradient_accum = xyz_gradient_accum 
         self.denom = denom
         self.optimizer.load_state_dict(opt_dict)
 
-    @property
+    @property # 提供访问属性接口，使得可以像成员变量一样，用“调用属性”的方法来调用该函数（如model.get_scaling、model.get_rotation）
     def get_scaling(self):
         return self.scaling_activation(self._scaling)
     
@@ -114,13 +117,13 @@ class GaussianModel:
     
     @property
     def get_xyz(self):
-        return self._xyz
+        return self._xyz # 返回所有高斯点的三维坐标[N, 3]
     
     @property
     def get_features(self):
         features_dc = self._features_dc
         features_rest = self._features_rest
-        return torch.cat((features_dc, features_rest), dim=1)
+        return torch.cat((features_dc, features_rest), dim=1) # 返回拼接成的[N, 3 * 16]特征矩阵
     
     @property
     def get_features_dc(self):
