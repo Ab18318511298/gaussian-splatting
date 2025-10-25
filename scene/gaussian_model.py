@@ -256,24 +256,33 @@ class GaussianModel:
     def update_learning_rate(self, iteration):
         ''' Learning rate scheduling per step '''
         if self.pretrained_exposures is None: # 如果没有预训练的曝光参数
-            # 
+            # param_groups是一个长度为1的列表，元素是整个曝光张量[N, 3, 4]。
+            # 循环只会进行一次，更新这个“包含不同图像”的参数组的学习率。
             for param_group in self.exposure_optimizer.param_groups:
+                # 使用带warm-up的指数衰减调度函数exposure_scheduler_args()来更新。
                 param_group['lr'] = self.exposure_scheduler_args(iteration)
 
+        # 遍历字典中的参数组
         for param_group in self.optimizer.param_groups:
+            # 只更新位置xyz的学习率。
             if param_group["name"] == "xyz":
                 lr = self.xyz_scheduler_args(iteration)
                 param_group['lr'] = lr
                 return lr
 
+    # 该函数生成一个字符串列表，每个元素对应高斯点的一个属性名称
     def construct_list_of_attributes(self):
         l = ['x', 'y', 'z', 'nx', 'ny', 'nz']
-        # All channels except the 3 DC
+        
+        # _features_dc：[num_points, 3, 1]；_features_rest：[num_points, 3, 15]
         for i in range(self._features_dc.shape[1]*self._features_dc.shape[2]):
-            l.append('f_dc_{}'.format(i))
+            l.append('f_dc_{}'.format(i)) # 命名f_dc_0 、 f_dc_1 、 f_dc_2（3个属性）
         for i in range(self._features_rest.shape[1]*self._features_rest.shape[2]):
-            l.append('f_rest_{}'.format(i))
-        l.append('opacity')
+            l.append('f_rest_{}'.format(i)) # 命名f_rest_0 、 f_rest_1 、 ...... 、 f_rest_44（45个属性）
+        
+        l.append('opacity') # 添加不透明度
+        
+        # scaling：[N, 3]；rotation：[N, 4]
         for i in range(self._scaling.shape[1]):
             l.append('scale_{}'.format(i))
         for i in range(self._rotation.shape[1]):
@@ -299,10 +308,13 @@ class GaussianModel:
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)
 
+    # 该函数“正则化”重置不透明度α，以控制高斯数量的过度增长
     def reset_opacity(self):
+        # 将经过激活函数后的get_opacity所有值设置上限0.01，即“重置”回接近透明的状态。再用激活函数的反函数，得到新的可优化参数的tensor。
         opacities_new = self.inverse_opacity_activation(torch.min(self.get_opacity, torch.ones_like(self.get_opacity)*0.01))
+        # replace_tensor_to_optimizer()：将新的张量替换原优化器中对应的参数"opacity"。输出一个字典 optimizable_tensors，包含更新后的张量。
         optimizable_tensors = self.replace_tensor_to_optimizer(opacities_new, "opacity")
-        self._opacity = optimizable_tensors["opacity"]
+        self._opacity = optimizable_tensors["opacity"] # 更新模型参数_opacity为新tensor。
 
     def load_ply(self, path, use_train_test_exp = False):
         plydata = PlyData.read(path)
