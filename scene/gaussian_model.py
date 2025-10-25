@@ -32,9 +32,12 @@ class GaussianModel:
     # 指定高斯点各参数的激活函数，以及如何将R、s转化为协方差矩阵Σ
     def setup_functions(self):
         def build_covariance_from_scaling_rotation(scaling, scaling_modifier, rotation):
-            # build_scaling_rotation()返回线性变换矩阵R @ S，其中R为四元数rotation经过
+            # build_scaling_rotation()返回矩阵R @ S，是从标准高斯（单位球）到椭圆高斯的线性变换，
+            # 其中R为四元数rotation经过qvec2rotmat()变换成的旋转矩阵，S为diag(scaling)。R与S均为[N, 3, 3]。
             L = build_scaling_rotation(scaling_modifier * scaling, rotation)
+            # 协方差阵Σ = L * L_transpose。transpose(1, 2)表示交换第二、第三维度
             actual_covariance = L @ L.transpose(1, 2)
+            # strip_symmetric()会执行(M + M.transpose(1, 2)) * 0.5，完全消除“不对称”的极小误差。
             symm = strip_symmetric(actual_covariance)
             return symm
 
@@ -156,9 +159,11 @@ class GaussianModel:
         if self.active_sh_degree < self.max_sh_degree:
             self.active_sh_degree += 1
 
+    # 该函数用来从点云初始化整个 3D Gaussian 模型的参数。
+    # pcd：输入的点云数据（含坐标和颜色）。cam_infos：所有训练图像的相机信息。spatial_lr_scale：空间学习率缩放因子
     def create_from_pcd(self, pcd : BasicPointCloud, cam_infos : int, spatial_lr_scale : float):
         self.spatial_lr_scale = spatial_lr_scale
-        fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
+        fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda() # 将原始点云坐标转为tensor，放进GPU。
         fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
         features = torch.zeros((fused_color.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda()
         features[:, :3, 0 ] = fused_color
