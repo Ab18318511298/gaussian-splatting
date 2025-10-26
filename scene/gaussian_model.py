@@ -396,40 +396,59 @@ class GaussianModel:
     def replace_tensor_to_optimizer(self, tensor, name):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
-            if group["name"] == name:
+            # 当参数字典的“name”字段等于输入的name
+            if group["name"] == name: 
+                '''
+                通过旧参数找到存储的动量状态。
+                state是一个字典，键是参数的标识符，字段是另一个字典，包括：
+                - exp_avg：一阶动量，通过对历史一阶动量与当前梯度进行加权平均得出，即历史梯度的指数加权平均
+                - exp_avg_sq；二阶动量，通过对历史二阶动量与当前梯度平方进行加权平均得出，即历史梯度平方的指数平均
+                - step：迭代更新次数
+                '''
                 stored_state = self.optimizer.state.get(group['params'][0], None)
+                # 将动量状态重置为0张量
                 stored_state["exp_avg"] = torch.zeros_like(tensor)
                 stored_state["exp_avg_sq"] = torch.zeros_like(tensor)
 
+                # 删除state中旧参数的状态信息
                 del self.optimizer.state[group['params'][0]]
+                # nn.Parameter()将输入的新tensor注册为可优化参数，替换参数组中的旧tensor
                 group["params"][0] = nn.Parameter(tensor.requires_grad_(True))
+                # 将重置后的动量状态绑定到新tensor上
                 self.optimizer.state[group['params'][0]] = stored_state
 
                 optimizable_tensors[group["name"]] = group["params"][0]
         return optimizable_tensors
 
+    # 根据布尔掩码 mask 删除（裁剪）一部分高斯点，即同时删除其对应的所有参数属性。
     def _prune_optimizer(self, mask):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
             stored_state = self.optimizer.state.get(group['params'][0], None)
-            if stored_state is not None:
+            if stored_state is not None: # 如果优化器有保存该参数的动量状态（即它有被训练过），则必须同时修改参数组和优化器中对应的状态
+                # 对一阶、二阶动量都应用掩码处理，防止与参数组中N大小不一致
                 stored_state["exp_avg"] = stored_state["exp_avg"][mask]
                 stored_state["exp_avg_sq"] = stored_state["exp_avg_sq"][mask]
 
+                # 删除旧的参数状态
                 del self.optimizer.state[group['params'][0]]
+                # 对参数张量也应用掩码进行裁剪，重新注册为可优化参数
                 group["params"][0] = nn.Parameter((group["params"][0][mask].requires_grad_(True)))
                 self.optimizer.state[group['params'][0]] = stored_state
 
                 optimizable_tensors[group["name"]] = group["params"][0]
-            else:
+            else: # 若没有动量状态，说明未训练过，只需修改参数组字典，无需修改优化器
                 group["params"][0] = nn.Parameter(group["params"][0][mask].requires_grad_(True))
                 optimizable_tensors[group["name"]] = group["params"][0]
         return optimizable_tensors
 
     def prune_points(self, mask):
+        # mask=True说明该点需要删除，~取反后符合删除逻辑
         valid_points_mask = ~mask
+        # 应用_prune_optimizer()对优化器中所有参数执行剪枝
         optimizable_tensors = self._prune_optimizer(valid_points_mask)
 
+        # 把_prune_optimizer()裁剪后的参数更新回模型，此时模型中只包含应该保留的高斯点。
         self._xyz = optimizable_tensors["xyz"]
         self._features_dc = optimizable_tensors["f_dc"]
         self._features_rest = optimizable_tensors["f_rest"]
@@ -437,20 +456,23 @@ class GaussianModel:
         self._scaling = optimizable_tensors["scaling"]
         self._rotation = optimizable_tensors["rotation"]
 
+        # 同步裁剪缓存的辅助变量
         self.xyz_gradient_accum = self.xyz_gradient_accum[valid_points_mask]
-
         self.denom = self.denom[valid_points_mask]
         self.max_radii2D = self.max_radii2D[valid_points_mask]
         self.tmp_radii = self.tmp_radii[valid_points_mask]
 
+    # 与_prune_optimizer相对，用来新增一部分高斯点。将一批新张量tensors_dict拼接进参数组字典和优化器中。
     def cat_tensors_to_optimizer(self, tensors_dict):
         optimizable_tensors = {}
         for group in self.optimizer.param_groups:
+            # 保证循环中一个组只有一个参数，否则报错
             assert len(group["params"]) == 1
+            # 取出要拼接的新张量（如对xyz坐标新增的[N_new, 3]）
             extension_tensor = tensors_dict[group["name"]]
             stored_state = self.optimizer.state.get(group['params'][0], None)
-            if stored_state is not None:
-
+            if stored_state is not None: # 如果有状态，则扩展状态tensor
+                # 拼接和新增tensor同维度的向量，且由于还未训练，动量全初始化为0
                 stored_state["exp_avg"] = torch.cat((stored_state["exp_avg"], torch.zeros_like(extension_tensor)), dim=0)
                 stored_state["exp_avg_sq"] = torch.cat((stored_state["exp_avg_sq"], torch.zeros_like(extension_tensor)), dim=0)
 
@@ -459,13 +481,15 @@ class GaussianModel:
                 self.optimizer.state[group['params'][0]] = stored_state
 
                 optimizable_tensors[group["name"]] = group["params"][0]
-            else:
+            else: # 如果状态全为空，则只需拼接参数。
                 group["params"][0] = nn.Parameter(torch.cat((group["params"][0], extension_tensor), dim=0).requires_grad_(True))
                 optimizable_tensors[group["name"]] = group["params"][0]
 
         return optimizable_tensors
 
+    # 用于“增密化的后处理”
     def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii):
+        # 把新的高斯点参数打包成一个字典
         d = {"xyz": new_xyz,
         "f_dc": new_features_dc,
         "f_rest": new_features_rest,
@@ -473,20 +497,26 @@ class GaussianModel:
         "scaling" : new_scaling,
         "rotation" : new_rotation}
 
+        # 将输入的新参数字典用cat_tensors_to_optimizer()拼接进参数组和优化器中
         optimizable_tensors = self.cat_tensors_to_optimizer(d)
+        
+        # 将优化器中拼接的结果写回模型，让模型真正拥有了这些新点及对应参数。
         self._xyz = optimizable_tensors["xyz"]
         self._features_dc = optimizable_tensors["f_dc"]
         self._features_rest = optimizable_tensors["f_rest"]
         self._opacity = optimizable_tensors["opacity"]
         self._scaling = optimizable_tensors["scaling"]
         self._rotation = optimizable_tensors["rotation"]
-
+        
+        # 对于高斯点的2D投影半径这一缓存统计量，直接拼接进模型
         self.tmp_radii = torch.cat((self.tmp_radii, new_tmp_radii))
+        # 对于和点数量有关的辅助统计量，由于有新点增加，需要完全重置为0，在后续训练中重新累积。
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
 
     def densify_and_split(self, grads, grad_threshold, scene_extent, N=2):
+        # 获取初始高斯点数量
         n_init_points = self.get_xyz.shape[0]
         # Extract points that satisfy the gradient condition
         padded_grad = torch.zeros((n_init_points), device="cuda")
