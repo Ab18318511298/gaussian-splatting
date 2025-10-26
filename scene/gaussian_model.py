@@ -67,7 +67,7 @@ class GaussianModel:
         self._rotation = torch.empty(0)
         self._opacity = torch.empty(0)
         self.max_radii2D = torch.empty(0) # 每个点在图像空间的最大半径
-        self.xyz_gradient_accum = torch.empty(0) # 累计每个点的梯度模平方
+        self.xyz_gradient_accum = torch.empty(0) # 累计每个点的梯度模平方，在该点的梯度向量(∇x, ∇y, ∇z)的平方和
         self.denom = torch.empty(0) # 记录每个点更新的次数
         self.optimizer = None # 优化器对象
         self.percent_dense = 0 # 稠密化比例，在density过程中用来筛选尺度大小
