@@ -487,7 +487,7 @@ class GaussianModel:
 
         return optimizable_tensors
 
-    # 用于“增密化的后处理”
+    # 用于“增密化的后处理”，将新的高斯点注册进优化器、放进模型中，完全处于“待训练”状态。
     def densification_postfix(self, new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii):
         # 把新的高斯点参数打包成一个字典
         d = {"xyz": new_xyz,
@@ -524,7 +524,7 @@ class GaussianModel:
         padded_grad[:grads.shape[0]] = grads.squeeze()
         
         '''
-        使用结合了梯度筛选+尺度筛选的selected_pts_mask掩码，来后续选出要分裂的点。
+        使用结合了梯度筛选+尺度筛选的selected_pts_mask掩码（一维布尔列向量，长度为高斯初始点个数），来后续选出要分裂的点。
         - grad_threshold：设置的梯度阈值，大于该阈值说明梯度误差大，值得分裂。
         - torch.logical_and：对两个 [N] 布尔向量做元素级 AND。（必须同时满足梯度筛选和尺度筛选）
         - torch.max(self.get_scaling, dim=1).values：对[N, 3]的get_scaling的第一维度（即单个点的xyz）取max值，得到[N]大小的tensor。
@@ -540,9 +540,13 @@ class GaussianModel:
         means =torch.zeros((stds.size(0), 3),device="cuda")
         # torch.normal()从正态分布出发，三个分量按各自轴的尺度标准差采样偏移量（突出各向异性）。samples大小仍为[N * S, 3]，为每个点都生成了局部偏移量。
         samples = torch.normal(mean=means, std=stds)
-        # 把S个母点的旋转四元数提取出来，
+        # 处理旋转：局部的高斯偏移量，需要旋转到世界坐标系方向上，才能加入母点。
+        # 把S个母点的旋转四元数提取出来，用build_rotation批处理成[S, 3, 3]的旋转矩阵，再用repeat(N,1,1)变成[N * S, 3, 3]，与偏移样本samples大小一致。
         rots = build_rotation(self._rotation[selected_pts_mask]).repeat(N,1,1)
+        # 把samples增维成[N*S, 3, 1]后，用bmm()与旋转矩阵rots做“批次矩阵乘法”，降维得到[N * S, 3]这一世界坐标系下的偏移列向量。与复制后的[N * S, 3]母点位置相加，得到最终的“子点新坐标”
         new_xyz = torch.bmm(rots, samples.unsqueeze(-1)).squeeze(-1) + self.get_xyz[selected_pts_mask].repeat(N, 1)
+
+        # 初始化子点参数：所有新子点属性都继承母点，除了new_scaling = scaling / (0.8 * N)，会适当降低尺寸（N取2时子点大小为母点的1/1.6）。
         new_scaling = self.scaling_inverse_activation(self.get_scaling[selected_pts_mask].repeat(N,1) / (0.8*N))
         new_rotation = self._rotation[selected_pts_mask].repeat(N,1)
         new_features_dc = self._features_dc[selected_pts_mask].repeat(N,1,1)
@@ -550,17 +554,24 @@ class GaussianModel:
         new_opacity = self._opacity[selected_pts_mask].repeat(N,1)
         new_tmp_radii = self.tmp_radii[selected_pts_mask].repeat(N)
 
+        # 用densification_postfix()将新点的参数拼接进优化器、放进模型中、初始化辅助统计量缓存。
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation, new_tmp_radii)
 
+        # selected_pts_mask作为一维列向量，表示旧的“初始点”，其中母点对应的是“True”（需要删除）。
+        # selected_pts_mask.sum()表示需要分裂的点个数，与N相乘表示总的“新点个数”。对所有新点创建了一个长度N * S的False列向量（需要保留）
+        # 拼接后，变成一个长度为“初始点个数+新子点个数”的布尔值列向量，可作为mask掩码放入prune_points()函数中去除mask值为“True”的母点。
         prune_filter = torch.cat((selected_pts_mask, torch.zeros(N * selected_pts_mask.sum(), device="cuda", dtype=bool)))
         self.prune_points(prune_filter)
 
     def densify_and_clone(self, grads, grad_threshold, scene_extent):
         # Extract points that satisfy the gradient condition
+        # torch.norm(grads, dim=-1)：求grads的范数（即xyz三方向梯度的模长），即每个点的梯度强度。
         selected_pts_mask = torch.where(torch.norm(grads, dim=-1) >= grad_threshold, True, False)
+        # 与densify_and_split()不同，克隆操作针对“尺度小”的高斯点。因此逻辑判断条件需要“ <= ”绝对尺度阈值percent_dense*scene_extent。
         selected_pts_mask = torch.logical_and(selected_pts_mask,
                                               torch.max(self.get_scaling, dim=1).values <= self.percent_dense*scene_extent)
-        
+
+        # 复制点的所有属性
         new_xyz = self._xyz[selected_pts_mask]
         new_features_dc = self._features_dc[selected_pts_mask]
         new_features_rest = self._features_rest[selected_pts_mask]
@@ -570,8 +581,10 @@ class GaussianModel:
 
         new_tmp_radii = self.tmp_radii[selected_pts_mask]
 
+        # 用densification_postfix()将新点的参数拼接进优化器、放进模型中、初始化辅助统计量缓存。
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_tmp_radii)
 
+    # 高斯增密与剪枝机制的“核心入口函数”，将前面的 densify_and_clone()、densify_and_split()、prune_points() 都整合起来
     def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, radii):
         grads = self.xyz_gradient_accum / self.denom
         grads[grads.isnan()] = 0.0
