@@ -67,7 +67,7 @@ class GaussianModel:
         self._rotation = torch.empty(0)
         self._opacity = torch.empty(0)
         self.max_radii2D = torch.empty(0) # 每个点在图像空间的最大半径
-        self.xyz_gradient_accum = torch.empty(0) # 累计每个点的梯度模平方，在该点的梯度向量(∇x, ∇y, ∇z)的平方和
+        self.xyz_gradient_accum = torch.empty(0) # 累计每个点的梯度模平方，在该点的梯度向量(∇x, ∇y)的平方和
         self.denom = torch.empty(0) # 记录每个点更新的次数
         self.optimizer = None # 优化器对象
         self.percent_dense = 0 # 稠密化比例，在density过程中用来筛选尺度大小
@@ -207,7 +207,7 @@ class GaussianModel:
     # 该函数在训练时，决定各个可学习参数（点的位置、特征、旋转、缩放、透明度等）的学习率与调度策略
     def training_setup(self, training_args):
         self.percent_dense = training_args.percent_dense
-        # 初始化存储每个点的“累积梯度模平方”，即在该点的梯度向量(∇x, ∇y, ∇z)的平方和，表示点“位置的梯度强度”。
+        # 初始化存储每个点的“累积梯度模平方”，即在该点的x、y两坐标梯度向量(∇x, ∇y)的平方和，表示点“位置的梯度强度”。
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         # 初始化存储每个点的更新次数
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
@@ -586,24 +586,40 @@ class GaussianModel:
 
     # 高斯增密与剪枝机制的“核心入口函数”，将前面的 densify_and_clone()、densify_and_split()、prune_points() 都整合起来
     def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size, radii):
+        # 计算每个点的平均梯度模平方。denom为训练迭代次数
         grads = self.xyz_gradient_accum / self.denom
+        # 将未参与梯度统计的点的平均梯度强度设为 0
         grads[grads.isnan()] = 0.0
 
         self.tmp_radii = radii
+        # 应用上面两个函数进行增密化（克隆与分裂）
         self.densify_and_clone(grads, max_grad, extent)
         self.densify_and_split(grads, max_grad, extent)
-
+        # 用不透明度阈值min_opacity判断，生成布尔值列向量mask掩码，=“True”说明透明度太低，贡献太小，需要剪枝。
         prune_mask = (self.get_opacity < min_opacity).squeeze()
-        if max_screen_size:
+        if max_screen_size: # 如果选择“根据屏幕尺寸与体积再进行剪枝”为True
+            # 筛选出投影半径太大的点
             big_points_vs = self.max_radii2D > max_screen_size
+            # 筛选出空间尺度太大、过于膨胀的点（这里无视梯度）
             big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
+            # 用logical_or的逻辑或判断，将三重筛选融入mask掩码。
             prune_mask = torch.logical_or(torch.logical_or(prune_mask, big_points_vs), big_points_ws)
+        # 用prune_points进行剪枝，其中应用_prune_optimizer()同时保持优化器状态一致
         self.prune_points(prune_mask)
+        # 清理掉 tmp_radii 临时缓存，并释放显存
         tmp_radii = self.tmp_radii
         self.tmp_radii = None
 
         torch.cuda.empty_cache()
 
     def add_densification_stats(self, viewspace_point_tensor, update_filter):
+        '''
+        - viewspace_point_tensor：每个 3D 高斯点在屏幕坐标系 (view space) 下的位置张量，大小为[N, 3]。.grad表示每个点在x、y、z三个方向的梯度。
+        - update_filter：一维布尔列向量掩码，表示哪些点参与了渲染/梯度更新
+        - 取 :2 ->只保留前两个维度 (x, y)
+        - torch.norm()计算x、y梯度的范数（模长），再用keepdim=True → 保持列向量形状 [N, 1]。
+        因此，xyz_gradient_accum 记录的是每个点x、y两坐标累计的梯度模平方（梯度强度）
+        '''
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
+        # 给参与训练参数更新的点的denom计数器+1。后面用来归一梯度强度，能得到平均梯度强度grads。
         self.denom[update_filter] += 1
