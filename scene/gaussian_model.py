@@ -70,7 +70,7 @@ class GaussianModel:
         self.xyz_gradient_accum = torch.empty(0) # 累计每个点的梯度模平方
         self.denom = torch.empty(0) # 记录每个点更新的次数
         self.optimizer = None # 优化器对象
-        self.percent_dense = 0 # 稠密化比例
+        self.percent_dense = 0 # 稠密化比例，在density过程中用来筛选尺度大小
         self.spatial_lr_scale = 0 # 空间学习率缩放
         self.setup_functions()
 
