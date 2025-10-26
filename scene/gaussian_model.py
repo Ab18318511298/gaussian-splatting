@@ -524,16 +524,23 @@ class GaussianModel:
         padded_grad[:grads.shape[0]] = grads.squeeze()
         
         '''
+        使用结合了梯度筛选+尺度筛选的selected_pts_mask掩码，来后续选出要分裂的点。
+        - grad_threshold：设置的梯度阈值，大于该阈值说明梯度误差大，值得分裂。
         - torch.logical_and：对两个 [N] 布尔向量做元素级 AND。（必须同时满足梯度筛选和尺度筛选）
         - torch.max(self.get_scaling, dim=1).values：对[N, 3]的get_scaling的第一维度（即单个点的xyz）取max值，得到[N]大小的tensor。
+        - scene_extent：是场景尺度，与percent_dense相乘得到绝对尺度阈值。
         '''
         selected_pts_mask = torch.where(padded_grad >= grad_threshold, True, False)
         selected_pts_mask = torch.logical_and(selected_pts_mask,
                                               torch.max(self.get_scaling, dim=1).values > self.percent_dense*scene_extent)
 
+        # get_scaling[selected_pts_mask]筛选出S个被选中的点，大小为[S, 3]；repeat(N,1)：在第0维复制N次，得到[N * S, 3]。
         stds = self.get_scaling[selected_pts_mask].repeat(N,1)
+        # 均值向量：构造[N * S, 3]的全零tensor，表示后续的偏移量采样要基于“以原点为中心”的高斯。
         means =torch.zeros((stds.size(0), 3),device="cuda")
+        # torch.normal()从正态分布出发，三个分量按各自轴的尺度标准差采样偏移量（突出各向异性）。samples大小仍为[N * S, 3]，为每个点都生成了局部偏移量。
         samples = torch.normal(mean=means, std=stds)
+        # 把S个母点的旋转四元数提取出来，
         rots = build_rotation(self._rotation[selected_pts_mask]).repeat(N,1,1)
         new_xyz = torch.bmm(rots, samples.unsqueeze(-1)).squeeze(-1) + self.get_xyz[selected_pts_mask].repeat(N, 1)
         new_scaling = self.scaling_inverse_activation(self.get_scaling[selected_pts_mask].repeat(N,1) / (0.8*N))
