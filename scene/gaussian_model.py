@@ -565,7 +565,7 @@ class GaussianModel:
 
     def densify_and_clone(self, grads, grad_threshold, scene_extent):
         # Extract points that satisfy the gradient condition
-        # torch.norm(grads, dim=-1)：求grads的范数（即xyz三方向梯度的模长），即每个点的梯度强度。
+        # torch.norm(grads, dim=-1)：求grads的范数，即每个点的梯度强度。
         selected_pts_mask = torch.where(torch.norm(grads, dim=-1) >= grad_threshold, True, False)
         # 与densify_and_split()不同，克隆操作针对“尺度小”的高斯点。因此逻辑判断条件需要“ <= ”绝对尺度阈值percent_dense*scene_extent。
         selected_pts_mask = torch.logical_and(selected_pts_mask,
