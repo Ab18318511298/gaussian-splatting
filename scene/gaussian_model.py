@@ -520,7 +520,13 @@ class GaussianModel:
         n_init_points = self.get_xyz.shape[0]
         # Extract points that satisfy the gradient condition
         padded_grad = torch.zeros((n_init_points), device="cuda")
+        # grads是[N, 1]的tensor，squeeze()将grads变成一维的[N]大小的tensor。取出部分点/全部点的梯度强度。
         padded_grad[:grads.shape[0]] = grads.squeeze()
+        
+        '''
+        - torch.logical_and：对两个 [N] 布尔向量做元素级 AND。（必须同时满足梯度筛选和尺度筛选）
+        - torch.max(self.get_scaling, dim=1).values：对[N, 3]的get_scaling的第一维度（即单个点的xyz）取max值，得到[N]大小的tensor。
+        '''
         selected_pts_mask = torch.where(padded_grad >= grad_threshold, True, False)
         selected_pts_mask = torch.logical_and(selected_pts_mask,
                                               torch.max(self.get_scaling, dim=1).values > self.percent_dense*scene_extent)
