@@ -98,6 +98,7 @@ def camera_to_JSON(id, camera : Camera):
     pos = W2C[:3, 3]
     rot = W2C[:3, :3]
     serializable_array_2d = [x.tolist() for x in rot]
+    # 构造最终写入JSON文件的python字典。
     camera_entry = {
         'id' : id,
         'img_name' : camera.image_name,
