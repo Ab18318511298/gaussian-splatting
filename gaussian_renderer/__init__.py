@@ -83,10 +83,12 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
             dir_pp = (pc.get_xyz - viewpoint_camera.camera_center.repeat(pc.get_features.shape[0], 1))
             # 对方向向量进行单位化：除以自身范数。
             dir_pp_normalized = dir_pp/dir_pp.norm(dim=1, keepdim=True)
+            # 根据阶数、方向、球谐系数，用eval_sh()函数将sh转换为rgb
             sh2rgb = eval_sh(pc.active_sh_degree, shs_view, dir_pp_normalized)
+            # 通过+0.5将rgb值平移到正区间，再用clamp_min(..., 0.0)防止出现负值
             colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
         else: # 否则把SH系数传入渲染器，由CUDA内核在渲染时计算
-            if separate_sh:
+            if separate_sh: # 如果需要将0阶与高阶系数分离
                 dc, shs = pc.get_features_dc, pc.get_features_rest
             else:
                 shs = pc.get_features
@@ -94,6 +96,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         colors_precomp = override_color
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
+    # rasterizer()将高斯点splat到2D屏幕、得到2D高斯协方差、得到颜色（计算或直接取）、α—blending，并输出“rgb图像、投影半径、深度图”。
     if separate_sh:
         rendered_image, radii, depth_image = rasterizer(
             means3D = means3D,
