@@ -74,19 +74,25 @@ def loadCam(args, id, cam_info, resolution_scale, is_nerf_synthetic, is_test_dat
                   image_name=cam_info.image_name, uid=id, data_device=args.data_device,
                   train_test_exp=args.train_test_exp, is_test_dataset=is_test_dataset, is_test_view=cam_info.is_test)
 
+# 封装了上面的loadCam()函数。在scene的_init_.py文件中，用于批量构建相机信息列表（训练集、测试集）。
 def cameraList_from_camInfos(cam_infos, resolution_scale, args, is_nerf_synthetic, is_test_dataset):
     camera_list = []
 
+    # c为cam_infos中的一个CameraInfo对象。
     for id, c in enumerate(cam_infos):
         camera_list.append(loadCam(args, id, c, resolution_scale, is_nerf_synthetic, is_test_dataset))
 
+    # 输出一个包含所有相机对象的 Python 列表
     return camera_list
 
+# 把Camera对象转换为可写入.json文件的Python字典格式
 def camera_to_JSON(id, camera : Camera):
+    # Rt存储相机到世界的变换矩阵
     Rt = np.zeros((4, 4))
+    # camera.R表示世界到相机，因此要transpose()
     Rt[:3, :3] = camera.R.transpose()
     Rt[:3, 3] = camera.T
-    Rt[3, 3] = 1.0
+    Rt[3, 3] = 1.0 # Rt=[[R_wc​_3×3, T_3×1], [0_1×3, 1]​]
 
     W2C = np.linalg.inv(Rt)
     pos = W2C[:3, 3]
