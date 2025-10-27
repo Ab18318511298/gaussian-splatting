@@ -32,10 +32,10 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     except:
         pass
 
-    # Set up rasterization configuration
+    # tan(FoVx / 2)、tan(FoVy / 2)表示屏幕半宽与深度的比例关系，后面用于计算屏幕坐标、像素位置。
     tanfovx = math.tan(viewpoint_camera.FoVx * 0.5)
     tanfovy = math.tan(viewpoint_camera.FoVy * 0.5)
-
+    # 建立统一的光栅化配置，然后创建渲染器对象
     raster_settings = GaussianRasterizationSettings(
         image_height=int(viewpoint_camera.image_height),
         image_width=int(viewpoint_camera.image_width),
@@ -43,15 +43,16 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         tanfovy=tanfovy,
         bg=bg_color,
         scale_modifier=scaling_modifier,
-        viewmatrix=viewpoint_camera.world_view_transform,
-        projmatrix=viewpoint_camera.full_proj_transform,
+        viewmatrix=viewpoint_camera.world_view_transform, # 世界到相机变换矩阵（4×4）
+        projmatrix=viewpoint_camera.full_proj_transform, # 相机投影到屏幕归一化坐标系（4×4）
         sh_degree=pc.active_sh_degree,
         campos=viewpoint_camera.camera_center,
-        prefiltered=False,
+        prefiltered=False, # 控制是否提前对 splat 进行模糊处理（通常 False）
         debug=pipe.debug,
-        antialiasing=pipe.antialiasing
+        antialiasing=pipe.antialiasing # 抗锯齿开关，控制像素边缘平滑处理
     )
 
+    # 实例化渲染器对象，初始化 GPU 光栅化引擎。完成操作：高斯点投影、计算投影半径radii、进行blending、输出图像。
     rasterizer = GaussianRasterizer(raster_settings=raster_settings)
 
     means3D = pc.get_xyz
@@ -64,9 +65,9 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     rotations = None
     cov3D_precomp = None
 
-    if pipe.compute_cov3D_python:
+    if pipe.compute_cov3D_python: # 如果提前在Python中计算好协方差阵Σ，不需要CUDA在渲染时计算
         cov3D_precomp = pc.get_covariance(scaling_modifier)
-    else:
+    else: # 否则在CUDA上用R、S自动计算Σ。
         scales = pc.get_scaling
         rotations = pc.get_rotation
 
@@ -75,18 +76,18 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     shs = None
     colors_precomp = None
     if override_color is None:
-        if pipe.convert_SHs_python:
+        if pipe.convert_SHs_python: # 如果在Python端把球谐系数转成颜色
             shs_view = pc.get_features.transpose(1, 2).view(-1, 3, (pc.max_sh_degree+1)**2)
             dir_pp = (pc.get_xyz - viewpoint_camera.camera_center.repeat(pc.get_features.shape[0], 1))
             dir_pp_normalized = dir_pp/dir_pp.norm(dim=1, keepdim=True)
             sh2rgb = eval_sh(pc.active_sh_degree, shs_view, dir_pp_normalized)
             colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
-        else:
+        else: # 否则把SH系数传入渲染器，由CUDA内核在渲染时计算
             if separate_sh:
                 dc, shs = pc.get_features_dc, pc.get_features_rest
             else:
                 shs = pc.get_features
-    else:
+    else: # 如果用户提供了固定颜色（多用于调试）
         colors_precomp = override_color
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
