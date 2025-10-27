@@ -17,16 +17,21 @@ import cv2
 
 WARNED = False
 
+# 读取单个摄像机图片的数据，构建并返回一个Camera对象。
 def loadCam(args, id, cam_info, resolution_scale, is_nerf_synthetic, is_test_dataset):
+    # 使用PIL打开RGB图片
     image = Image.open(cam_info.image_path)
 
-    if cam_info.depth_path != "":
+    if cam_info.depth_path != "": # 如果存在深度图路径
         try:
             if is_nerf_synthetic:
+                # 用OpenCV读取深度图，-1表示读取完整图片，包括α通道。读入后转换为 np.float32并做缩放。
                 invdepthmap = cv2.imread(cam_info.depth_path, -1).astype(np.float32) / 512
             else:
+                # / float(2**16)用来把16-bit的深度正则化到[0, 1]范围。
                 invdepthmap = cv2.imread(cam_info.depth_path, -1).astype(np.float32) / float(2**16)
 
+        # 捕捉三种异常。raise意为“重新抛出”，避免静默失败。
         except FileNotFoundError:
             print(f"Error: The depth file at path '{cam_info.depth_path}' was not found.")
             raise
@@ -38,12 +43,15 @@ def loadCam(args, id, cam_info, resolution_scale, is_nerf_synthetic, is_test_dat
             raise
     else:
         invdepthmap = None
-        
-    orig_w, orig_h = image.size
-    if args.resolution in [1, 2, 4, 8]:
+
+    # 接下来计算输出的分辨率
+    orig_w, orig_h = image.size # 得到原始宽高
+    if args.resolution in [1, 2, 4, 8]: # 如果为离散因子[1, 2, 4, 8]之一
+        # 把resolution_scale * args.resolution作为缩放比例，将图片原始宽高压缩成“新的输出分辨率”。
         resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
-    else:  # should be a type that converts to float
-        if args.resolution == -1:
+
+    else:  # 如果是其他值（-1或者一个具体的图像的像素宽度，如800像素）
+        if args.resolution == -1: # -1代表“自动模式”，存在阈值1600。
             if orig_w > 1600:
                 global WARNED
                 if not WARNED:
@@ -55,11 +63,11 @@ def loadCam(args, id, cam_info, resolution_scale, is_nerf_synthetic, is_test_dat
                 global_down = 1
         else:
             global_down = orig_w / args.resolution
-    
+            
+        scale = float(global_down) * float(resolution_scale) # 两个缩放因子的乘积
+        resolution = (int(orig_w / scale), int(orig_h / scale)) # 除以缩放因子并取整后，得到最终的输出分辨率
 
-        scale = float(global_down) * float(resolution_scale)
-        resolution = (int(orig_w / scale), int(orig_h / scale))
-
+    # 将所有数据和信息打包成一个Camera对象
     return Camera(resolution, colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY, depth_params=cam_info.depth_params,
                   image=image, invdepthmap=invdepthmap,
