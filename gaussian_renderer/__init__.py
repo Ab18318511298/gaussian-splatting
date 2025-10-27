@@ -77,8 +77,11 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     colors_precomp = None
     if override_color is None:
         if pipe.convert_SHs_python: # 如果在Python端把球谐系数转成颜色
+            # 对[N, 3*16]的二维tensor，用view()重新reshape成[N, 3, 16]的结构。
             shs_view = pc.get_features.transpose(1, 2).view(-1, 3, (pc.max_sh_degree+1)**2)
+            # 用xyz点减去repeat()展开的相机中心，得到每个点的“方向向量”，从相机中心指向高斯点。
             dir_pp = (pc.get_xyz - viewpoint_camera.camera_center.repeat(pc.get_features.shape[0], 1))
+            # 对方向向量进行单位化：除以自身范数。
             dir_pp_normalized = dir_pp/dir_pp.norm(dim=1, keepdim=True)
             sh2rgb = eval_sh(pc.active_sh_degree, shs_view, dir_pp_normalized)
             colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
