@@ -25,6 +25,8 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     # 创建一个与xyz大小相同（[N, 3]）的全零tensor，用来追踪屏幕空间坐标的梯度。
     # Create zero tensor. We will use it to make pytorch return gradients of the 2D (screen-space) means
     screenspace_points = torch.zeros_like(pc.get_xyz, dtype=pc.get_xyz.dtype, requires_grad=True, device="cuda") + 0
+    # 在bakcward()进行反向传播时，只有“叶子张量”会将梯度存储在grad属性中，从而用于梯度下降。但对“非叶子张量”，也可以显式调用retain_grad()来保留梯度的存储。
+    # 用try-except捕获异常，保证后续可以获取“每个点的屏幕空间梯度”
     try:
         screenspace_points.retain_grad()
     except:
