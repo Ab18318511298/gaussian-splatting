@@ -121,6 +121,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         
     # Apply exposure to rendered image (training only)
     if use_trained_exp:
+        # 使用GaussianModel.py中定义的get_exposure_from_name()函数，或使用预输入的曝光矩阵，或通过名字取出曝光矩阵。
         exposure = pc.get_exposure_from_name(viewpoint_camera.image_name)
         rendered_image = torch.matmul(rendered_image.permute(1, 2, 0), exposure[:3, :3]).permute(2, 0, 1) + exposure[:3, 3,   None, None]
 
