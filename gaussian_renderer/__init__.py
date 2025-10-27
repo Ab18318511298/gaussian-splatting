@@ -121,13 +121,18 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         
     # Apply exposure to rendered image (training only)
     if use_trained_exp:
-        # 使用GaussianModel.py中定义的get_exposure_from_name()函数，或使用预输入的曝光矩阵，或通过名字取出曝光矩阵。
+        # 使用GaussianModel.py中定义的get_exposure_from_name()函数，或使用预训练/外部的曝光矩阵，或通过名字取出曝光矩阵。
         exposure = pc.get_exposure_from_name(viewpoint_camera.image_name)
+        # permute(1, 2, 0)将[3, H, W]变为[H, W, 3]，与3 × 3的exposure[:3, :3]进行matmul()：
+        # 将H当作batch维，[W, 3]与[3, 3]做矩阵乘法，得到结果[H, W, 3]，再转回[3, H, W]。
+        # exposure[:3, 3, None, None]是曝光矩阵的t向量，扩展成与前面同维度的[3, 1, 1]。
         rendered_image = torch.matmul(rendered_image.permute(1, 2, 0), exposure[:3, :3]).permute(2, 0, 1) + exposure[:3, 3,   None, None]
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.
+    # 用clamp(0, 1)将渲染后图像的rgb值强制在（0，1）之间
     rendered_image = rendered_image.clamp(0, 1)
+    # 输出打包字典
     out = {
         "render": rendered_image,
         "viewspace_points": screenspace_points,
