@@ -58,7 +58,7 @@ def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
     Rt = np.linalg.inv(C2W)
     return np.float32(Rt)
 
-# 构造投影矩阵，把相机坐标系中的点投影到裁剪空间。
+# 构造透视投影矩阵，把3D点从相机坐标系投影到裁剪空间（二维平面）上。
 def getProjectionMatrix(znear, zfar, fovX, fovY):
     tanHalfFovY = math.tan((fovY / 2))
     tanHalfFovX = math.tan((fovX / 2))
