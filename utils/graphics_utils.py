@@ -19,13 +19,18 @@ class BasicPointCloud(NamedTuple):
     colors : np.array
     normals : np.array
 
+# 该函数使用4×4的齐次变换矩阵transf_matrix，对3D点坐标points进行几何变换。
 def geom_transform_points(points, transf_matrix):
     P, _ = points.shape
+    # 构造齐次坐标，将每个点从[x, y, z]变为[x, y, z, 1]，使得points_hom形状为（P，4）。
     ones = torch.ones(P, 1, dtype=points.dtype, device=points.device)
     points_hom = torch.cat([points, ones], dim=1)
+    # 对(P, 4)的tensor与增维后的(1, 4, 4)tensor进行matmul()运算，得到的结果是(1, P, 4)，其中1是batch维度。
     points_out = torch.matmul(points_hom, transf_matrix.unsqueeze(0))
 
+    # points_out[..., 3:]中的...为“匹配前面所有维度”，因此形状为(1, P, 1)。
     denom = points_out[..., 3:] + 0.0000001
+    # 用形状为(1, P, 3)的坐标除以缩放因子denom，然后用.squeeze(dim=0)去除多余的第一维，得到最终的返回结果：3D坐标张量，形状为(P, 3)。
     return (points_out[..., :3] / denom).squeeze(dim=0)
 
 def getWorld2View(R, t):
