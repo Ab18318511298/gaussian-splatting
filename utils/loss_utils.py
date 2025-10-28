@@ -46,8 +46,10 @@ class FusedSSIMMap(torch.autograd.Function):
         # opt_grad为上游梯度（即loss对ssim_map的梯度）
         img1, img2 = ctx.saved_tensors
         C1, C2 = ctx.C1, ctx.C2
-        # 调用fusedssim_backward()计算梯度
+        # 调用fusedssim_backward()计算梯度，返回loss对img1的梯度张量，形状与img1相同。
         grad = fusedssim_backward(C1, C2, img1, img2, opt_grad)
+        # 在自定义Function.backward中，返回值的顺序必须严格对应 forward 的输入顺序
+        # 即：C1、C2、img2都无需梯度，而img1需要梯度
         return None, None, grad, None
 
 def l1_loss(network_output, gt):
