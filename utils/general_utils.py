@@ -131,7 +131,7 @@ def build_scaling_rotation(s, r):
     L = R @ L
     return L
 
-# 在正式训练（train.py中）、渲染设置（render.py中）前，都会用该函数初始化环境
+# 在训练入口（train.py中）里正式调用training()函数前、渲染入口（render.py中）里正式调用rendering_set()函数前，都会用该函数初始化环境
 # silent = False为“带时间戳的正常打印”，= True为“静默模式，不打印”。
 def safe_state(silent):
     # 这段代码劫持标准输出流（即 print() 的目标）。每次打印时都会自动加上时间戳。
