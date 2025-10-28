@@ -15,6 +15,7 @@ from datetime import datetime
 import numpy as np
 import random
 
+# 定义sigmoid反函数，用于反激活
 def inverse_sigmoid(x):
     return torch.log(x/(1-x))
 
