@@ -13,27 +13,40 @@ import torch
 import torch.nn.functional as F
 from torch.autograd import Variable
 from math import exp
+# fusedssim：计算 SSIM map 的前向函数
+# fusedssim_backward：计算 SSIM 的梯度（反向传播函数）
 try:
     from diff_gaussian_rasterization._C import fusedssim, fusedssim_backward
 except:
     pass
 
+# SSIM公式中的常数稳定项，这里可防止分母为0。
 C1 = 0.01 ** 2
 C2 = 0.03 ** 2
 
+# 继承自 torch.autograd.Function，表示“自定义”的前向和反向计算函数
 class FusedSSIMMap(torch.autograd.Function):
+    # 将forward()与backward()定义为静态方法，...
+    # 使得“不创建类实例”时也可以通过FusedSSIMMAP.forward()和FusedSSIMMAP.backward()调用，也无法修改类/实例状态。
     @staticmethod
     def forward(ctx, C1, C2, img1, img2):
         ssim_map = fusedssim(C1, C2, img1, img2)
+        # ctx是context（上下文对象），用来保存前向传播中的一些信息，以便在反向传播中使用。
+        # 使用ctx.save_for_backward()保存反向传播需要的张量，让反向传播可以使用前向传播的中间结果，不需要重复计算。
+        # img1.detach()能生成一个新tensor，与原tensor共享数据，但被“切断了梯度跟踪”，不参与梯度计算。
         ctx.save_for_backward(img1.detach(), img2)
+        # 保存常量信息。
         ctx.C1 = C1
         ctx.C2 = C2
+        # 返回每个像素的SSIM值（通常在[0, 1]之间）
         return ssim_map
 
     @staticmethod
     def backward(ctx, opt_grad):
+        # opt_grad为上游梯度（即loss对ssim_map的梯度）
         img1, img2 = ctx.saved_tensors
         C1, C2 = ctx.C1, ctx.C2
+        # 调用fusedssim_backward()计算梯度
         grad = fusedssim_backward(C1, C2, img1, img2, opt_grad)
         return None, None, grad, None
 
