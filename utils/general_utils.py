@@ -19,13 +19,16 @@ import random
 def inverse_sigmoid(x):
     return torch.log(x/(1-x))
 
-# 在scene/cameras.py中，用于把PIL图像转换为torch，并调整为对应分辨率
+# 在scene/cameras.py中，用于把PIL图像转换为torch，并调整为给定分辨率
+# pil_image是一个PIL.Igame对象，resolution是目标分辨率元组（width, height）
 def PILtoTorch(pil_image, resolution):
+    # resize()会新生成一个PIL图像，大小为指定的resolution，默认方法为bilinear（双线性插值）
     resized_image_PIL = pil_image.resize(resolution)
+    # 将图片转换成numpy数组，再转为pytorch张量，然后进行归一化（由于数据类型通常为int8，范围为[0, 255]）
     resized_image = torch.from_numpy(np.array(resized_image_PIL)) / 255.0
-    if len(resized_image.shape) == 3:
+    if len(resized_image.shape) == 3: # 如果图像为彩色图像[H, W, 3]（即有RGB三通道），则改为pytorch中的标准通道顺序[3, H, W]
         return resized_image.permute(2, 0, 1)
-    else:
+    else: # 如果图片为灰度图像[H, W]，则用.unsqueeze(dim=-1)增维到(H, W, 1)，再修改顺序[1, H, W]
         return resized_image.unsqueeze(dim=-1).permute(2, 0, 1)
 
 def get_expon_lr_func(
