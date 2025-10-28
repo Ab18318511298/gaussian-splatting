@@ -19,7 +19,7 @@ import random
 def inverse_sigmoid(x):
     return torch.log(x/(1-x))
 
-# 在用于把PIL图像转换为torch，
+# 在scene/cameras.py中，用于把PIL图像转换为torch，并调整为对应分辨率
 def PILtoTorch(pil_image, resolution):
     resized_image_PIL = pil_image.resize(resolution)
     resized_image = torch.from_numpy(np.array(resized_image_PIL)) / 255.0
