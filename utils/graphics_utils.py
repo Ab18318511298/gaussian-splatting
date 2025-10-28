@@ -33,6 +33,7 @@ def geom_transform_points(points, transf_matrix):
     # 用形状为(1, P, 3)的坐标除以缩放因子denom，然后用.squeeze(dim=0)去除多余的第一维，得到最终的返回结果：3D坐标张量，形状为(P, 3)。
     return (points_out[..., :3] / denom).squeeze(dim=0)
 
+# 通过旋转矩阵、平移向量，返回一个世界到相机的4×4平移变换矩阵。
 def getWorld2View(R, t):
     Rt = np.zeros((4, 4))
     Rt[:3, :3] = R.transpose()
@@ -40,14 +41,18 @@ def getWorld2View(R, t):
     Rt[3, 3] = 1.0
     return np.float32(Rt)
 
+# 对上一函数的扩展，仍然返回世界到相机的4×4齐次矩阵，但相机中心的位置经过了平移+缩放
 def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
     Rt = np.zeros((4, 4))
     Rt[:3, :3] = R.transpose()
     Rt[:3, 3] = t
     Rt[3, 3] = 1.0
-
-    C2W = np.linalg.inv(Rt)
-    cam_center = C2W[:3, 3]
+    
+    # 对W2C求逆得到C2W
+    C2W = np.linalg.inv(Rt) 
+    # C2W中的平移向量为相机中心在世界坐标系中的位置。
+    cam_center = C2W[:3, 3] 
+    # 对相机中心的位置进行平移+按比例缩放（归一化）
     cam_center = (cam_center + translate) * scale
     C2W[:3, 3] = cam_center
     Rt = np.linalg.inv(C2W)
