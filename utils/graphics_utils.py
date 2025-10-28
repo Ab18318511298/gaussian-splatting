@@ -58,18 +58,22 @@ def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
     Rt = np.linalg.inv(C2W)
     return np.float32(Rt)
 
-# 构造透视投影矩阵，把3D点从相机坐标系投影到裁剪空间（二维平面）上。
+# 构造透视投影矩阵，把齐次化3D点（[x, y, z, 1]）从相机坐标系投影到裁剪空间（二维平面）上，得到[x', y', z', w']。
+# 而后再做齐次除法，映射到标准化坐标系（[x'/w', y'/w', z'/w']）。
 def getProjectionMatrix(znear, zfar, fovX, fovY):
+    # tanHalfFov表示屏幕半宽与深度的比例。
     tanHalfFovY = math.tan((fovY / 2))
     tanHalfFovX = math.tan((fovX / 2))
 
+    # 定义近平面上视锥体的四条边界
     top = tanHalfFovY * znear
     bottom = -top
     right = tanHalfFovX * znear
     left = -right
 
     P = torch.zeros(4, 4)
-
+    
+    # 图形系统采用“右手系”则取1；“左手系”取-1。
     z_sign = 1.0
 
     P[0, 0] = 2.0 * znear / (right - left)
@@ -81,8 +85,10 @@ def getProjectionMatrix(znear, zfar, fovX, fovY):
     P[2, 3] = -(zfar * znear) / (zfar - znear)
     return P
 
+# 该函数用视场角fov、图像分辨率（宽与高）求焦距focal
 def fov2focal(fov, pixels):
     return pixels / (2 * math.tan(fov / 2))
-
+    
+# 该函数用焦距focal、图像分辨率（宽与高）求视场角fov
 def focal2fov(focal, pixels):
     return 2*math.atan(pixels/(2*focal))
