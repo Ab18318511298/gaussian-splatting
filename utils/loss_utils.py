@@ -82,26 +82,34 @@ def create_window(window_size, channel):
     window = Variable(_2D_window.expand(channel, 1, window_size, window_size).contiguous())
     return window
 
+# 该函数是_ssim()的高层封装函数
 def ssim(img1, img2, window_size=11, size_average=True):
+    # 由于不确定img是否有batch维度，取“倒数第三维”的通道数C，放入channel。
     channel = img1.size(-3)
+    # 用create_window()生成形状为[3, 1, 11, 11]的二维高斯卷积核
     window = create_window(window_size, channel)
 
-    if img1.is_cuda:
+    if img1.is_cuda: # 如果img在cuda上
+        # 把window放在相同的cuda上。
         window = window.cuda(img1.get_device())
+    #确保 window 的数据类型（float16/float32）与img1一致
     window = window.type_as(img1)
 
+    # 调用_ssim()函数得到平均SSIM值（标量或一维向量）。
     return _ssim(img1, img2, window, window_size, channel, size_average)
 
 # 该函数为python实现的SSIM前向传播，与CUDA实现的fusedssim等价。
 def _ssim(img1, img2, window, window_size, channel, size_average=True):
-    # 计算局部均值
+    # 计算局部均值：F.conv2d实现卷积操作（对每个像素区域用window卷积，实现局部加权平均）；groups=channel表示每个通道独立卷积
+    # 为了保持卷积后输出图像的尺寸不变，使用padding=window_size // 2（在图像的边缘周围填充一些像素），保证输出的map能与图像像素一一对应。
     mu1 = F.conv2d(img1, window, padding=window_size // 2, groups=channel)
     mu2 = F.conv2d(img2, window, padding=window_size // 2, groups=channel)
-
     mu1_sq = mu1.pow(2)
     mu2_sq = mu2.pow(2)
     mu1_mu2 = mu1 * mu2
-
+    
+    # 计算局部方差、局部协方差：依旧使用window卷积实现局部加权平均。
+    # 方差公式：σ_x ^ 2 = E[x^2] - E[x]^2；协方差公式：σ_xy = E[x*y] - E[x]*E[y]。
     sigma1_sq = F.conv2d(img1 * img1, window, padding=window_size // 2, groups=channel) - mu1_sq
     sigma2_sq = F.conv2d(img2 * img2, window, padding=window_size // 2, groups=channel) - mu2_sq
     sigma12 = F.conv2d(img1 * img2, window, padding=window_size // 2, groups=channel) - mu1_mu2
@@ -109,14 +117,21 @@ def _ssim(img1, img2, window, window_size, channel, size_average=True):
     C1 = 0.01 ** 2
     C2 = 0.03 ** 2
 
+    # 计算ssim_map（一个tensor），包含每个像素的SSIM值。
     ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
 
+    # 由于ssim_map与img同大小，为[B, 3, H, W]或[3, H, W]
     if size_average:
+        # 对整个batch的所有图像、通道求平均ssim值
         return ssim_map.mean()
     else:
+        # 对单个图像的所有通道求平均ssim值。
         return ssim_map.mean(1).mean(1).mean(1)
 
-
+# 该函数与ssim相对，应用前面的自定义算子FusedSSIMMap，显著加速前向与反向传播。
 def fast_ssim(img1, img2):
+    # .apply()是由torch.autograd.Function基类“自动定义”的一个静态方法。
+    # 使用apply()后，会调用forward()做前向计算、注册计算图节点（保存 ctx、输入输出、以及 backward 的定义，以便反向传播时调用）
     ssim_map = FusedSSIMMap.apply(C1, C2, img1, img2)
+    # 返回整个batch的平均值
     return ssim_map.mean()
