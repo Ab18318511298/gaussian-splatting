@@ -13,6 +13,7 @@ import torch
 
 # 定义图像质量指标（均方误差：Mean Squared Error）
 def mse(img1, img2):
+    # img是形状为(3, H, W)的图像，
     return (((img1 - img2)) ** 2).view(img1.shape[0], -1).mean(1, keepdim=True)
 
 # 定义图像质量指标（峰值信噪比：Peak Signal-to-Noise Ratio）
