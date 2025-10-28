@@ -57,7 +57,7 @@ def getWorld2View2(R, t, translate=np.array([.0, .0, .0]), scale=1.0):
     C2W[:3, 3] = cam_center
     Rt = np.linalg.inv(C2W)
     return np.float32(Rt)
-viewpoint
+
 # 构造透视投影矩阵，把齐次化3D点（[x, y, z, 1]）从相机坐标系投影到裁剪空间（二维平面）上，得到[x', y', z', w']。
 # 为了从裁剪空间到像素平面，再做齐次除法，映射到NDC标准化坐标系（[x'/w', y'/w', z'/w']），再通过视口变换映射到屏幕像素坐标。
 def getProjectionMatrix(znear, zfar, fovX, fovY):
