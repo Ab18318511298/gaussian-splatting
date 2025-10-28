@@ -43,7 +43,11 @@ class FusedSSIMMap(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, opt_grad):
-        # opt_grad为上游梯度（即loss对ssim_map的梯度）
+        '''
+        loss.backward()反向传播时，会返回对L1、L_ssim、Depth的梯度，其中对ssim的梯度即为opt_grad（∂loss/∂ssim_map）。
+        然后进行FusedSSIMMap()，前向传播得到ssim_map具体数值后，进行backward(ctx, opt_grad)，得到ssim对img1的梯度grad。
+        最后autograd会将grad回传到model参数。
+        '''
         img1, img2 = ctx.saved_tensors
         C1, C2 = ctx.C1, ctx.C2
         # 调用fusedssim_backward()计算梯度，返回loss对img1的梯度张量，形状与img1相同。
@@ -52,12 +56,15 @@ class FusedSSIMMap(torch.autograd.Function):
         # 即：C1、C2、img2都无需梯度，而img1需要梯度
         return None, None, grad, None
 
+# 定义像素级损失函数L1。
 def l1_loss(network_output, gt):
     return torch.abs((network_output - gt)).mean()
 
+# 定义“对误差惩罚更强”的像素级损失函数L2。
 def l2_loss(network_output, gt):
     return ((network_output - gt) ** 2).mean()
 
+# 这个函数生成一个一维高斯核
 def gaussian(window_size, sigma):
     gauss = torch.Tensor([exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)])
     return gauss / gauss.sum()
