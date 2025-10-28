@@ -64,14 +64,21 @@ def l1_loss(network_output, gt):
 def l2_loss(network_output, gt):
     return ((network_output - gt) ** 2).mean()
 
-# 这个函数生成一个一维高斯核
+# 该函数生成一个一维高斯核，window_size为生成数的个数。
 def gaussian(window_size, sigma):
+    # 用2D高斯分布公式创建高斯核：G(x) = e ^ [−2 * σ^2 / (x − μ) ^ 2​]，window_size // 2即中心位置。
     gauss = torch.Tensor([exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)])
+    # 返回归一化结果，使所有元素和为1。
     return gauss / gauss.sum()
 
+# 该函数生成一个 二维高斯窗口（卷积核），channel一般为3，表示rgb三通道。常在计算 SSIM 时用作“局部加权平均”。
 def create_window(window_size, channel):
+    # 函数.unsqueeze(1)将一维高斯权重变为列向量。
     _1D_window = gaussian(window_size, 1.5).unsqueeze(1)
+    # 函数_1D_window.mm(_1D_window.t())计算外积，将n个一维点变成n * n个的二维高斯核。
+    # 函数.unsqueeze(0).unsqueeze(0)用来添加 batch 和 channel 维度，变成 [1, 1, H, W]。
     _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
+    # 函数expand(channel, 1, window_size, window_size)将[1, 1, H, W]变成[3, 1, H, W]。
     window = Variable(_2D_window.expand(channel, 1, window_size, window_size).contiguous())
     return window
 
@@ -85,7 +92,9 @@ def ssim(img1, img2, window_size=11, size_average=True):
 
     return _ssim(img1, img2, window, window_size, channel, size_average)
 
+# 该函数为python实现的SSIM前向传播，与CUDA实现的fusedssim等价。
 def _ssim(img1, img2, window, window_size, channel, size_average=True):
+    # 计算局部均值
     mu1 = F.conv2d(img1, window, padding=window_size // 2, groups=channel)
     mu2 = F.conv2d(img2, window, padding=window_size // 2, groups=channel)
 
