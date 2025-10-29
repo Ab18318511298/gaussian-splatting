@@ -55,9 +55,13 @@ def get_scales(key, cameras, images, points3d_ordered, args):
 
     # 将深度图的16位深度转为[0, 1]浮点表示(8bit单精度浮点数)
     invmonodepthmap = invmonodepthmap.astype(np.float32) / (2**16)
-    s = invmonodepthmap.shape[0] / cam_intrinsic.height
 
+    # 由于单目深度图的分辨率可能与colmap图不同，因此计算缩放比例s，并依此调整colmap图坐标。
+    s = invmonodepthmap.shape[0] / cam_intrinsic.height
     maps = (valid_xys * s).astype(np.float32)
+
+    # maps形状为[N, 2]，表示每个点在深度图像素坐标系下的位置 [x, y]。原点为左上角点。
+    # 使用逻辑and，筛选在深度图边界内的、逆深度值为正的点。
     valid = (
         (maps[..., 0] >= 0) * 
         (maps[..., 1] >= 0) * 
