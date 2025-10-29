@@ -5,13 +5,19 @@ from joblib import delayed, Parallel
 import json
 from read_write_model import *
 
+# 该函数用于进行深度尺度对齐，计算单目深度图与colmap深度图之间的缩放尺度（scale）、偏移（offset）。
 def get_scales(key, cameras, images, points3d_ordered, args):
+    # images：colmap输出的图像字典（相机编号、外参、2d坐标、对应3d点索引）。
     image_meta = images[key]
+    # cameras：colmap输出的相机字典（内参、height、width）。
     cam_intrinsic = cameras[image_meta.camera_id]
 
+    # 根据图像索引key，在images_metas中提取出长度为特征点个数N的“3D点索引数组”。在全局点云中没有匹配到任何3D点的2D点，索引为-1
     pts_idx = images_metas[key].point3D_ids
 
+    # 过滤掉无效的2D点
     mask = pts_idx >= 0
+    # 避免超出索引范围
     mask *= pts_idx < len(points3d_ordered)
 
     pts_idx = pts_idx[mask]
