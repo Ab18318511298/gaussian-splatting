@@ -246,7 +246,7 @@ class GaussianModel:
                                                     max_steps=training_args.position_lr_max_steps)
 
         # 为曝光矩阵设置独立的指数衰减调度，因为曝光参数往往收敛较慢，需要不同的调度周期。
-        # 对exposure的优化，设置了lr_delay_steps，说明在前期存在“warm-up”阶段，学习率从lr_delay_mult * lr_init开始，上升到lr_mult。避免训练初期剧烈震荡。
+        # 对exposure的优化，设置了lr_delay_steps，说明在前期存在“warm-up”阶段，学习率从lr_delay_mult * lr_init开始，上升到lr_init。避免训练初期剧烈震荡。
         self.exposure_scheduler_args = get_expon_lr_func(training_args.exposure_lr_init, training_args.exposure_lr_final,
                                                         lr_delay_steps=training_args.exposure_lr_delay_steps,
                                                         lr_delay_mult=training_args.exposure_lr_delay_mult,
