@@ -58,6 +58,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     
     # 检查稀疏Adam优化器是否可用
     if not SPARSE_ADAM_AVAILABLE and opt.optimizer_type == "sparse_adam":
+        # 通过引发SystemExit异常，来退出python程序。
         sys.exit(f"Trying to use sparse adam but it is not installed, please install the correct rasterizer using pip install [3dgs_accel].")
 
     first_iter = 0 # 起始迭代次数
