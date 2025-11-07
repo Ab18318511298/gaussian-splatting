@@ -204,7 +204,7 @@ class GaussianModel:
         exposure = torch.eye(3, 4, device="cuda")[None].repeat(len(cam_infos), 1, 1)
         self._exposure = nn.Parameter(exposure.requires_grad_(True))
 
-    # 该函数在训练时，决定各个可学习参数（点的位置、特征、旋转、缩放、透明度等）的学习率与调度策略
+    # 该函数在训练前，用传入的opt参数（training_args）来决定各个可学习参数（点的位置、特征、旋转、缩放、透明度等）的学习率与调度策略
     def training_setup(self, training_args):
         self.percent_dense = training_args.percent_dense
         # 初始化存储每个点的“累积梯度模平方”，即在该点的x、y两坐标梯度向量(∇x, ∇y)的平方和，表示点“位置的梯度强度”。
