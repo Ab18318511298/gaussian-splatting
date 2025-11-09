@@ -618,7 +618,7 @@ class GaussianModel:
         - update_filter：一维布尔列向量掩码，表示哪些点参与了渲染/梯度更新
         - 取 :2 ->只保留前两个维度 (x, y)
         - torch.norm()计算x、y梯度的范数（模长），再用keepdim=True → 保持列向量形状 [N, 1]。
-        因此，xyz_gradient_accum 记录的是每个点x、y两坐标累计的梯度模平方（梯度强度）
+        因此，xyz_gradient_accum 记录的是参与更新的每个点x、y两坐标累计的梯度模平方（梯度强度）
         '''
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         # 给参与训练参数更新的点的denom计数器+1。后面用来归一梯度强度，能得到平均梯度强度grads。
