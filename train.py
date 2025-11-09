@@ -200,7 +200,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         iter_end.record() # 迭代计时结束
 
-        with torch.no_grad(): # 局部禁用梯度计算
+        with torch.no_grad(): # 局部禁用梯度计算，使得新计算得到的tensor的requires_grad强制为False。
             # Progress bar
             # 使用滑动平均（EMA），考虑当前loss/Ll1depth与历史平滑值，降低短期波动影响。
             ema_loss_for_log = 0.4 * loss.item() + 0.6 * ema_loss_for_log # loss.item()将loss张量转换为数字
